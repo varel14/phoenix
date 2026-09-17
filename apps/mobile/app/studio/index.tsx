@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
-import { colors, radii, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useArtistStats, useMyArtist } from "@/hooks/use-library";
 import { useFavoriteIds } from "@/hooks/use-catalog";
 import { useArtistSongs, useArtistVideos } from "@/hooks/use-library";
@@ -15,6 +16,7 @@ import { formatCount } from "@/utils/format";
 
 export default function StudioScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const queryClient = useQueryClient();
   const myArtist = useMyArtist();
   const stats = useArtistStats(myArtist.data?.id);
@@ -62,14 +64,14 @@ export default function StudioScreen() {
             ←
           </AppText>
           <View style={{ flex: 1 }}>
-            <AppText variant="title">Artist studio</AppText>
+            <AppText variant="title">Studio Créateur</AppText>
             <AppText variant="caption">{artist.name}</AppText>
           </View>
           <ContextMenu
             actions={[
               {
                 label: "Edit profile",
-                glyph: "✎",
+                icon: "pencil",
                 onPress: () => router.push({ pathname: "/studio/edit-profile", params: { name: artist.name, bio: artist.bio ?? "" } }),
               },
             ]}
@@ -78,10 +80,10 @@ export default function StudioScreen() {
 
         {stats.data ? (
           <View style={statsGrid}>
-            <StatBox label="Plays" value={formatCount(stats.data.plays)} />
-            <StatBox label="Views" value={formatCount(stats.data.views)} />
-            <StatBox label="Downloads" value={formatCount(stats.data.downloads)} />
-            <StatBox label="Subscribers" value={formatCount(stats.data.subscribers)} />
+            <StatBox label="Écoutes" value={formatCount(stats.data.plays)} />
+            <StatBox label="Vues" value={formatCount(stats.data.views)} />
+            <StatBox label="Téléchargements" value={formatCount(stats.data.downloads)} />
+            <StatBox label="Abonnés" value={formatCount(stats.data.subscribers)} />
           </View>
         ) : (
           <LoadingView label="Loading stats…" />
@@ -99,7 +101,7 @@ export default function StudioScreen() {
 
       <View style={{ marginTop: spacing.lg }}>
         <AppText variant="heading" style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-          My songs ({songList.length})
+          Mes titres ({songList.length})
         </AppText>
         {songList.length === 0 ? (
           <EmptyView title="No songs yet" subtitle="Publish your first song to see it here." />
@@ -114,14 +116,14 @@ export default function StudioScreen() {
                 menuActions={[
                   {
                     label: "Edit",
-                    glyph: "✎",
+                    icon: "pencil",
                     onPress: () =>
                       router.push({
                         pathname: "/studio/song-form",
                         params: { songId: song.id, title: song.title, audioUrl: song.audioUrl, genre: song.genre ?? "", albumName: song.albumName ?? "" },
                       }),
                   },
-                  { label: "Delete", glyph: "🗑", destructive: true, onPress: () => confirmRemove("SONG", song.id, song.title) },
+                  { label: "Delete", icon: "trash-outline", destructive: true, onPress: () => confirmRemove("SONG", song.id, song.title) },
                 ]}
               />
             </View>
@@ -131,7 +133,7 @@ export default function StudioScreen() {
 
       <View style={{ marginTop: spacing.lg }}>
         <AppText variant="heading" style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-          My videos ({videoList.length})
+          Mes vidéos ({videoList.length})
         </AppText>
         {videoList.length === 0 ? (
           <EmptyView title="No videos yet" subtitle="Publish your first video to see it here." />
@@ -146,14 +148,14 @@ export default function StudioScreen() {
                 menuActions={[
                   {
                     label: "Edit",
-                    glyph: "✎",
+                    icon: "pencil",
                     onPress: () =>
                       router.push({
                         pathname: "/studio/video-form",
                         params: { videoId: video.id, title: video.title, videoUrl: video.videoUrl, description: video.description ?? "" },
                       }),
                   },
-                  { label: "Delete", glyph: "🗑", destructive: true, onPress: () => confirmRemove("VIDEO", video.id, video.title) },
+                  { label: "Delete", icon: "trash-outline", destructive: true, onPress: () => confirmRemove("VIDEO", video.id, video.title) },
                 ]}
               />
             </View>
@@ -165,9 +167,10 @@ export default function StudioScreen() {
 }
 
 function StatBox({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, alignItems: "center", gap: 4 }}>
-      <AppText variant="heading" style={{ color: colors.primary }}>
+      <AppText variant="heading" style={{ color: colors.accent }}>
         {value}
       </AppText>
       <AppText variant="small">{label.toUpperCase()}</AppText>

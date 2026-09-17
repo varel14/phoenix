@@ -1,6 +1,9 @@
 import { ScrollView, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors, radii, spacing } from "@/theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useFavoriteIds } from "@/hooks/use-catalog";
 import { useArtist, useArtistSongs, useArtistVideos, useFollowArtist } from "@/hooks/use-library";
 import { AppText, Button, ErrorView, LoadingView } from "@/components/ui";
@@ -12,6 +15,7 @@ import { useAuthStore } from "@/stores/auth-store";
 
 export default function ArtistDetailScreen() {
   const router = useRouter();
+  const { colors, gradients } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((state) => state.user);
   const artist = useArtist(id);
@@ -32,15 +36,28 @@ export default function ArtistDetailScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
-      <View style={{ backgroundColor: colors.surface, paddingBottom: spacing.lg }}>
-        <View style={{ height: 140, backgroundColor: colors.surfaceElevated, borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg }}>
-          {data.bannerUrl ? <Artwork uri={data.bannerUrl} seed={`${data.id}-banner`} label={data.name} size={140} radius={0} /> : null}
-        </View>
-        <View style={{ paddingHorizontal: spacing.lg, marginTop: -40, gap: spacing.xs }}>
+      {/* Gradient header with banner + avatar, per mockup artist profile. */}
+      <View>
+        <LinearGradient
+          colors={gradients.brand}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ height: 170, borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg, justifyContent: "flex-end" }}
+        >
+          {data.bannerUrl ? (
+            <Artwork uri={data.bannerUrl} seed={`${data.id}-banner`} label={data.name} size={170} radius={0} />
+          ) : (
+            <View style={{ padding: spacing.lg }}>
+              <Ionicons name="flame" size={44} color="rgba(255,255,255,0.35)" />
+            </View>
+          )}
+        </LinearGradient>
+        <View style={{ paddingHorizontal: spacing.lg, marginTop: -36, gap: spacing.xs }}>
           <Artwork uri={data.avatarUrl} seed={data.id} label={data.name} size={80} radius={40} />
-          <AppText variant="title" style={{ marginTop: spacing.sm }}>
-            {data.name} {data.isVerified ? "✔" : ""}
-          </AppText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm }}>
+            <AppText variant="title">{data.name}</AppText>
+            {data.isVerified ? <Ionicons name="checkmark-circle" size={20} color={colors.accent} /> : null}
+          </View>
           {data.bio ? <AppText variant="bodyMuted">{data.bio}</AppText> : null}
           <AppText variant="caption">
             {formatCount(data._count.followers)} followers · {data._count.songs} songs · {data._count.videos} videos
@@ -54,7 +71,7 @@ export default function ArtistDetailScreen() {
             <View style={{ marginTop: spacing.md, flexDirection: "row", gap: spacing.sm }}>
               <View style={{ flex: 1 }}>
                 <Button
-                  label={data.isFollowing ? "Following ✓" : "Follow"}
+                  label={data.isFollowing ? "Following ✓" : "Suivre"}
                   variant={data.isFollowing ? "secondary" : "primary"}
                   loading={follow.isPending}
                   onPress={() => follow.mutate(!data.isFollowing)}
@@ -68,9 +85,9 @@ export default function ArtistDetailScreen() {
       {songList.length > 0 ? (
         <View style={{ marginTop: spacing.lg }}>
           <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <AppText variant="heading">Songs</AppText>
-            <AppText onPress={() => void playerService.playQueue(songList, 0)} style={{ color: colors.primary, fontWeight: "700" }}>
-              ▶ Play all
+            <AppText variant="heading">Titres populaires</AppText>
+            <AppText onPress={() => void playerService.playQueue(songList, 0)} style={{ color: colors.accent, fontWeight: "700" }}>
+              ▶ Tout écouter
             </AppText>
           </View>
           {songList.map((song) => (
@@ -88,7 +105,7 @@ export default function ArtistDetailScreen() {
       {videoList.length > 0 ? (
         <View style={{ marginTop: spacing.lg }}>
           <AppText variant="heading" style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-            Videos
+            Vidéos
           </AppText>
           {videoList.map((video) => (
             <InteractiveRow

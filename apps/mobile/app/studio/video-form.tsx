@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useMyArtist } from "@/hooks/use-library";
 import { artistsApi, type VideoPublishBody } from "@/services/api/artists-api";
 import { AppText, Button, Input } from "@/components/ui";
@@ -9,6 +10,7 @@ import { AppText, Button, Input } from "@/components/ui";
 /** Publish (no videoId param) or edit (videoId param) a video. */
 export default function VideoFormScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<{ videoId?: string; title?: string; videoUrl?: string; description?: string }>();
   const myArtist = useMyArtist();
   const editing = Boolean(params.videoId);

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useMyArtist } from "@/hooks/use-library";
 import { artistsApi, type SongPublishBody } from "@/services/api/artists-api";
 import { AppText, Button, Input } from "@/components/ui";
@@ -9,6 +10,7 @@ import { AppText, Button, Input } from "@/components/ui";
 /** Publish (no songId param) or edit (songId param) a song. */
 export default function SongFormScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<{ songId?: string; title?: string; audioUrl?: string; genre?: string; albumName?: string }>();
   const myArtist = useMyArtist();
   const editing = Boolean(params.songId);

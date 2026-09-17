@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useMyArtist } from "@/hooks/use-library";
 import { useAuthStore } from "@/stores/auth-store";
 import { artistsApi } from "@/services/api/artists-api";
@@ -9,6 +10,7 @@ import { AppText, Button, Input } from "@/components/ui";
 
 export default function EditArtistProfileScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<{ name?: string; bio?: string }>();
   const myArtist = useMyArtist();
   const refreshSession = useAuthStore((state) => state.refresh);

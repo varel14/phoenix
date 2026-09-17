@@ -1,6 +1,9 @@
-import { ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { colors, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useFavoriteIds, useSongs, useVideos } from "@/hooks/use-catalog";
 import { useArtists } from "@/hooks/use-library";
 import { AppText, ErrorView, LoadingView } from "@/components/ui";
@@ -9,6 +12,7 @@ import { Artwork } from "@/components/media/artwork";
 import { playerService } from "@/services/media/player-service";
 
 export default function HomeScreen() {
+  const { colors, gradients } = useTheme();
   const songs = useSongs({ limit: 10, sort: "publishedAt", order: "desc" });
   const videos = useVideos({ limit: 5, sort: "viewCount", order: "desc" });
   const artists = useArtists();
@@ -22,15 +26,68 @@ export default function HomeScreen() {
   }
 
   const newSongs = songs.data?.data ?? [];
+  const heroSong = newSongs[0];
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md }}>
-        <AppText variant="title">Phoenix</AppText>
+        <AppText variant="title">Accueil</AppText>
         <AppText variant="bodyMuted" style={{ marginTop: 2 }}>
           Fresh for you today
         </AppText>
       </View>
+
+      {/* Gradient "Écouter" hero card per mockup */}
+      {heroSong ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void playerService.playQueue(newSongs, 0)}
+          style={{ marginHorizontal: spacing.lg, marginBottom: spacing.xl }}
+        >
+          <LinearGradient
+            colors={gradients.brand}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ borderRadius: radii.lg, padding: spacing.xl, gap: spacing.sm }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.xs,
+              }}
+            >
+              <Ionicons name="sparkles" size={14} color={colors.onGradientMuted} />
+              <AppText variant="small" color={colors.onGradientMuted} style={{ letterSpacing: 1.5 }}>
+                ÉCOUTER
+              </AppText>
+            </View>
+            <AppText variant="title" color={colors.onPrimary} numberOfLines={2}>
+              {heroSong.title}
+            </AppText>
+            <AppText color={colors.onGradientMuted} numberOfLines={1}>
+              {heroSong.artist.name}
+            </AppText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.xs }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: radii.full,
+                  backgroundColor: "rgba(255,255,255,0.22)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="play" size={18} color="#FFFFFF" />
+              </View>
+              <AppText color={colors.onPrimary} style={{ fontWeight: "700" }}>
+                Lecture
+              </AppText>
+            </View>
+          </LinearGradient>
+        </Pressable>
+      ) : null}
 
       <Section title="New releases">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
@@ -59,7 +116,7 @@ export default function HomeScreen() {
         ))}
       </Section>
 
-      <Section title="Artists to follow">
+      <Section title="Artistes à suivre">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
           {(artists.data?.data ?? []).slice(0, 8).map((artist) => (
             <ArtistPill key={artist.id} id={artist.id} name={artist.name} avatarUrl={artist.avatarUrl} />
@@ -72,12 +129,12 @@ export default function HomeScreen() {
 
 function ArtistPill({ id, name, avatarUrl }: { id: string; name: string; avatarUrl: string | null }) {
   return (
-    <View style={{ width: 88, alignItems: "center", gap: spacing.xs }}>
+    <Pressable accessibilityRole="button" onPress={() => router.push(`/artist/${id}`)} style={{ width: 88, alignItems: "center", gap: spacing.xs }}>
       <Artwork uri={avatarUrl} seed={id} label={name} size={80} radius={40} />
       <AppText variant="caption" numberOfLines={1} style={{ textAlign: "center" }}>
         {name}
       </AppText>
-    </View>
+    </Pressable>
   );
 }
 
@@ -91,6 +148,3 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </View>
   );
 }
-
-void colors;
-void router;

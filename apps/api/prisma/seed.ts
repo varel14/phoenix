@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
+import { auth } from "../src/lib/auth.js";
 
 /**
  * Development seed: demo artists and catalog content using public sample
@@ -8,6 +9,10 @@ import { PrismaClient } from "../src/generated/prisma/client.js";
  */
 const connectionString = process.env["DATABASE_URL"] ?? "";
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+
+/** Shared password for every seeded demo account (listener + creators). */
+export const DEMO_PASSWORD = "phoenix123";
+const LISTENER_EMAIL = "listener@phoenix.local";
 
 const SOUNDHELIX = (n: number) => `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${n}.mp3`;
 const GTV = (name: string) => `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/${name}.mp4`;
@@ -70,42 +75,89 @@ const videos = [
   { title: "For Bigger Blazes", artist: "kaya", description: "Chromecast original short.", url: GTV("ForBiggerBlazes"), duration: 15 },
 ] as const;
 
+/** Deterministic demo usage metrics so creator stats are not all zeros. */
+function demoCounts(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return {
+    primary: 120 + (hash % 880), // plays or views
+    downloads: 10 + (hash % 90),
+  };
+}
+
+/**
+ * Creates (or resets) a login-ready demo account. Signup goes through
+ * better-auth so password hashing/account rows stay in sync with the auth
+ * system; role and emailVerified are then set directly.
+ */
+async function ensureDemoUser(input: { email: string; name: string; role: "USER" | "ARTIST" }): Promise<string> {
+  const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
+  if (!existing) {
+    await auth.api.signUpEmail({
+      body: { email: input.email, name: input.name, password: DEMO_PASSWORD },
+    });
+  }
+  const user = await prisma.user.update({
+    where: { email: input.email },
+    data: { emailVerified: true, role: input.role },
+  });
+  return user.id;
+}
+
 async function main() {
   console.log("Seeding Phoenix development data...");
 
   const createdArtists = new Map<string, string>();
 
   for (const artist of artists) {
-    // Seeded owner accounts are placeholders (they never log in).
-    const user = await prisma.user.upsert({
-      where: { email: `${artist.key}@phoenix.local` },
-      update: { role: "ARTIST" },
-      create: {
-        email: `${artist.key}@phoenix.local`,
-        name: artist.name,
-        emailVerified: true,
-        role: "ARTIST",
-      },
+    // Owner accounts are login-ready creators (e.g. aurora@phoenix.local).
+    const user = await ensureDemoUser({
+      email: `${artist.key}@phoenix.local`,
+      name: artist.name,
+      role: "ARTIST",
     });
 
     const record = await prisma.artist.upsert({
-      where: { userId: user.id },
+      where: { userId: user },
       update: { bio: artist.bio },
-      create: { userId: user.id, name: artist.name, bio: artist.bio },
+      create: { userId: user, name: artist.name, bio: artist.bio },
     });
     createdArtists.set(artist.key, record.id);
     console.log(`  artist: ${artist.name}`);
   }
 
+  // Normal listener account with one follow, demonstrating the fan side.
+  const listenerId = await ensureDemoUser({
+    email: LISTENER_EMAIL,
+    name: "Nina Listener",
+    role: "USER",
+  });
+  await prisma.artistFollow.upsert({
+    where: {
+      userId_artistId: { userId: listenerId, artistId: createdArtists.get("aurora")! },
+    },
+    update: {},
+    create: { userId: listenerId, artistId: createdArtists.get("aurora")! },
+  });
+  console.log(`  listener: ${LISTENER_EMAIL} (follows Aurora Waves)`);
+
   let songCount = 0;
   for (const artist of artists) {
     const artistId = createdArtists.get(artist.key)!;
     for (const song of artist.songs) {
+      const counts = demoCounts(`${artist.key}:${song.title}`);
+      const data = {
+        playCount: counts.primary,
+        downloadCount: counts.downloads,
+      };
       const existing = await prisma.song.findFirst({
         where: { title: song.title, artistId },
         select: { id: true },
       });
-      if (existing) continue;
+      if (existing) {
+        await prisma.song.update({ where: { id: existing.id }, data });
+        continue;
+      }
       await prisma.song.create({
         data: {
           artistId,
@@ -115,6 +167,7 @@ async function main() {
           mimeType: "audio/mpeg",
           durationSec: song.duration,
           isDownloadable: true,
+          ...data,
         },
       });
       songCount += 1;
@@ -125,11 +178,19 @@ async function main() {
   let videoCount = 0;
   for (const video of videos) {
     const artistId = createdArtists.get(video.artist)!;
+    const counts = demoCounts(`${video.artist}:${video.title}`);
+    const data = {
+      viewCount: counts.primary,
+      downloadCount: counts.downloads,
+    };
     const existing = await prisma.video.findFirst({
       where: { title: video.title, artistId },
       select: { id: true },
     });
-    if (existing) continue;
+    if (existing) {
+      await prisma.video.update({ where: { id: existing.id }, data });
+      continue;
+    }
     await prisma.video.create({
       data: {
         artistId,
@@ -140,11 +201,13 @@ async function main() {
         mimeType: "video/mp4",
         durationSec: video.duration,
         isDownloadable: true,
+        ...data,
       },
     });
     videoCount += 1;
   }
   console.log(`  videos: ${videoCount} created`);
+  console.log(`  demo accounts: password "${DEMO_PASSWORD}" for listener@phoenix.local + creators`);
   console.log("Seed complete.");
 }
 

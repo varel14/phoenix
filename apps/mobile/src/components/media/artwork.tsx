@@ -1,6 +1,8 @@
 import { Image } from "expo-image";
 import { StyleSheet, View } from "react-native";
-import { colors, layout, radii } from "@/theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { layout, radii } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { artworkGradient, initials } from "@/utils/format";
 import { AppText } from "@/components/ui/primitives";
 
@@ -14,6 +16,7 @@ interface ArtworkProps {
 
 /** Artwork with a deterministic gradient + initials fallback. */
 export function Artwork({ uri, seed, label, size, radius = radii.md }: ArtworkProps) {
+  const { colors } = useTheme();
   const gradient = artworkGradient(seed);
   if (uri) {
     return (
@@ -26,21 +29,16 @@ export function Artwork({ uri, seed, label, size, radius = radii.md }: ArtworkPr
     );
   }
   return (
-    <View
-      style={[
-        styles.fallback,
-        {
-          width: size,
-          height: size,
-          borderRadius: radius,
-          backgroundColor: gradient.from,
-        },
-      ]}
+    <LinearGradient
+      colors={[gradient.from, gradient.to]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.fallback, { width: size, height: size, borderRadius: radius }]}
     >
-      <AppText style={{ color: "#FFFFFF88", fontSize: Math.max(14, size * 0.3), fontWeight: "800" }}>
+      <AppText style={{ color: "#FFFFFFB3", fontSize: Math.max(14, size * 0.3), fontWeight: "800" }}>
         {initials(label) || "♪"}
       </AppText>
-    </View>
+    </LinearGradient>
   );
 }
 

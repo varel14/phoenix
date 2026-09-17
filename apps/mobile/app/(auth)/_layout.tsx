@@ -1,9 +1,10 @@
 import { Redirect, Stack } from "expo-router";
 import { useAuthStore } from "@/stores/auth-store";
-import { colors } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 
 export default function AuthLayout() {
   const user = useAuthStore((state) => state.user);
+  const { colors } = useTheme();
 
   if (user) {
     return <Redirect href="/(tabs)" />;

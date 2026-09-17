@@ -3,8 +3,8 @@ import { useToggleFavorite } from "@/hooks/use-catalog";
 import { MediaRow } from "./media-row";
 import { ProgressBar } from "@/components/ui";
 import { AppText } from "@/components/ui/primitives";
+import { useTheme } from "@/theme/theme-provider";
 import { formatFileSize } from "@/utils/format";
-import { colors } from "@/theme";
 import { View } from "react-native";
 import type { MenuAction } from "@/components/ui";
 import type { Song, Video } from "@/types/api";
@@ -54,12 +54,12 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
                 isDownloaded
                   ? {
                       label: "Delete download",
-                      glyph: "⌫",
+                      icon: "trash-outline" as const,
                       onPress: () => void removeDownload(mediaType, media.id),
                     }
                   : {
                       label: downloading ? "Downloading…" : "Download",
-                      glyph: "↓",
+                      icon: "download-outline" as const,
                       onPress: () => {
                         if (!downloading) void startDownload(media);
                       },
@@ -68,7 +68,7 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
                   ? [
                       {
                         label: "Add to playlist",
-                        glyph: "+",
+                        icon: "add-circle-outline" as const,
                         onPress: () => onAddToPlaylist(media as Song),
                       },
                     ]
@@ -91,8 +91,8 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
 }
 
 function DownloadSize({ media }: { media: Song | Video }) {
+  const { colors } = useTheme();
   const size = "fileSizeBytes" in media ? media.fileSizeBytes : null;
   if (!size) return null;
   return <AppText style={{ fontSize: 9, color: colors.textMuted }}>{formatFileSize(size)}</AppText>;
 }
-

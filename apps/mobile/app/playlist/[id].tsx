@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { colors, radii, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { usePlaylist, usePlaylistItems, usePlaylistMutations } from "@/hooks/use-library";
 import { useFavoriteIds } from "@/hooks/use-catalog";
 import { AppText, Button, ContextMenu, ErrorView, Input, LoadingView } from "@/components/ui";
@@ -11,6 +12,7 @@ import { playerService } from "@/services/media/player-service";
 
 export default function PlaylistDetailScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
   const playlist = usePlaylist(id);
@@ -56,8 +58,8 @@ export default function PlaylistDetailScreen() {
           </View>
           <ContextMenu
             actions={[
-              { label: "Rename", glyph: "✎", onPress: () => setRenaming(true) },
-              { label: "Delete playlist", glyph: "🗑", destructive: true, onPress: confirmDelete },
+              { label: "Rename", icon: "pencil", onPress: () => setRenaming(true) },
+              { label: "Delete playlist", icon: "trash-outline", destructive: true, onPress: confirmDelete },
             ]}
           />
         </View>

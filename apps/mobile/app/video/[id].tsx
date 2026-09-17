@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors, spacing } from "@/theme";
+import { spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useFavoriteIds, useVideo, useVideos } from "@/hooks/use-catalog";
 import { useToggleFavorite } from "@/hooks/use-catalog";
 import { trackEvent } from "@/services/events/event-queue";
@@ -12,6 +13,7 @@ import { formatCount, formatDuration } from "@/utils/format";
 
 export default function VideoDetailScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const video = useVideo(id);
   const related = useVideos({ limit: 6, sort: "viewCount", order: "desc" });
@@ -36,8 +38,9 @@ export default function VideoDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <IconButton
-        glyph="←"
+        icon="chevron-back"
         size={26}
+        color={colors.text}
         onPress={() => router.back()}
         accessibilityLabel="Back"
         style={{ position: "absolute", top: spacing.xl, left: spacing.md, zIndex: 10 }}

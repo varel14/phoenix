@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { colors, radii, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { useFavorites, usePlaylistItems, usePlaylistMutations, usePlaylists } from "@/hooks/use-library";
 import { useFavoriteIds } from "@/hooks/use-catalog";
 import { AppText, Button, ContextMenu, EmptyView, ErrorView, IconButton, Input, LoadingView } from "@/components/ui";
@@ -21,7 +22,7 @@ export default function LibraryScreen() {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: spacing.md }}>
-        <AppText variant="title">Library</AppText>
+        <AppText variant="title">Bibliothèque</AppText>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.sm, paddingVertical: spacing.md }}>
         <Chip label="Favorites" active={section === "FAVORITES"} onPress={() => setSection("FAVORITES")} />
@@ -39,6 +40,7 @@ export default function LibraryScreen() {
 }
 
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -49,7 +51,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
         borderRadius: radii.full,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: active ? colors.primary : colors.surface,
+        backgroundColor: active ? colors.primary : colors.primaryTint,
         borderWidth: 1,
         borderColor: active ? colors.primary : colors.border,
       }}
@@ -114,6 +116,7 @@ function FavoritesSection() {
 }
 
 function PlaylistsSection() {
+  const { colors } = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
   const playlists = usePlaylists();
@@ -159,7 +162,7 @@ function PlaylistsSection() {
           </View>
         </View>
       ) : (
-        <Button label="＋ New playlist" variant="secondary" onPress={() => setCreating(true)} />
+        <Button label="＋ Nouvelle playlist" variant="secondary" onPress={() => setCreating(true)} />
       )}
 
       {items.map((playlist) => (
@@ -188,7 +191,7 @@ function PlaylistsSection() {
             actions={[
               {
                 label: "Delete playlist",
-                glyph: "🗑",
+                icon: "trash-outline",
                 destructive: true,
                 onPress: () => remove.mutate(playlist.id),
               },
@@ -204,6 +207,7 @@ function PlaylistsSection() {
 }
 
 function DownloadsSection({ mediaType }: { mediaType: "SONG" | "VIDEO" }) {
+  const { colors } = useTheme();
   const router = useRouter();
   const library = useDownloadsStore((state) => state.library);
   const hydrated = useDownloadsStore((state) => state.hydrated);
@@ -264,7 +268,8 @@ function DownloadsSection({ mediaType }: { mediaType: "SONG" | "VIDEO" }) {
             </View>
           </Pressable>
           <IconButton
-            glyph="⌫"
+            icon="trash-outline"
+            size={20}
             color={colors.danger}
             onPress={() => void remove(mediaType, entry.mediaId)}
             accessibilityLabel="Delete download"

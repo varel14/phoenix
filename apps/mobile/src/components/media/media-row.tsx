@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { colors, radii, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { formatCount, formatDuration } from "@/utils/format";
 import { AppText, ContextMenu, type MenuAction, IconButton } from "@/components/ui";
 import { Artwork } from "./artwork";
@@ -29,6 +30,7 @@ export function MediaRow({
   right,
 }: MediaRowProps) {
   const router = useRouter();
+  const { colors } = useTheme();
   const isSong = mediaType === "SONG";
   const song = media as Song;
   const video = media as Video;
@@ -40,11 +42,11 @@ export function MediaRow({
     )} ${isSong ? "plays" : "views"}`;
 
   const defaultActions: MenuAction[] = [
-    { label: isFavorite ? "Remove from favorites" : "Add to favorites", glyph: "♥", onPress: onToggleFavorite },
+    { label: isFavorite ? "Remove from favorites" : "Add to favorites", icon: isFavorite ? "heart-dislike-outline" : "heart-outline", onPress: onToggleFavorite },
     ...(menuActions ?? []),
     {
       label: "View artist",
-      glyph: "◉",
+      icon: "person-circle-outline",
       onPress: () => router.push(`/artist/${media.artistId}`),
     },
   ];
@@ -67,7 +69,7 @@ export function MediaRow({
       <View style={styles.actions}>
         {right}
         <IconButton
-          glyph={isFavorite ? "♥" : "♡"}
+          icon={isFavorite ? "heart" : "heart-outline"}
           color={isFavorite ? colors.favorite : colors.textMuted}
           onPress={onToggleFavorite}
           accessibilityLabel={isFavorite ? "Remove from favorites" : "Add to favorites"}

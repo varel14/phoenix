@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { colors, radii, spacing } from "@/theme";
+import { radii, spacing } from "@/theme";
+import { useTheme } from "@/theme/theme-provider";
 import { formatDuration } from "@/utils/format";
 import { AppText, IconButton } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
@@ -12,6 +13,7 @@ import type { Video as VideoModel } from "@/types/api";
  * pass `exclusive` to pause other registered players on this screen instead.
  */
 export function VideoCard({ video, autoPlay = false, muted = false }: { video: VideoModel; autoPlay?: boolean; muted?: boolean }) {
+  const { colors } = useTheme();
   const player = useVideoPlayer(video.videoUrl, (instance) => {
     instance.muted = muted;
     if (autoPlay) {
@@ -20,7 +22,7 @@ export function VideoCard({ video, autoPlay = false, muted = false }: { video: V
   });
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: colors.surfaceElevated }]}>
       <VideoView
         player={player}
         style={styles.player}
@@ -34,7 +36,7 @@ export function VideoCard({ video, autoPlay = false, muted = false }: { video: V
           {video.title}
         </AppText>
         <IconButton
-          glyph={player.playing ? "❚❚" : "▶"}
+          icon={player.playing ? "pause" : "play"}
           onPress={() => {
             if (player.playing) {
               player.pause();
@@ -54,6 +56,7 @@ export function VideoCard({ video, autoPlay = false, muted = false }: { video: V
 
 /** Large hero player used on the video detail screen. */
 export function VideoHero({ video, autoPlay = true }: { video: VideoModel; autoPlay?: boolean }) {
+  const { colors } = useTheme();
   const player = useVideoPlayer(video.videoUrl, (instance) => {
     if (autoPlay) instance.play();
   });
@@ -72,6 +75,7 @@ export function VideoHero({ video, autoPlay = true }: { video: VideoModel; autoP
 
 /** Small muted preview player (used alongside the hero for related videos). */
 export function VideoPreview({ video, onPress }: { video: VideoModel; onPress: () => void }) {
+  const { colors } = useTheme();
   const player = useVideoPlayer(video.videoUrl, (instance) => {
     instance.muted = true;
     instance.loop = true;
@@ -79,7 +83,7 @@ export function VideoPreview({ video, onPress }: { video: VideoModel; onPress: (
   });
 
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.preview}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.preview, { backgroundColor: colors.surfaceElevated }]}>
       <VideoView
         player={player}
         style={styles.previewPlayer}
@@ -99,7 +103,6 @@ export function VideoPreview({ video, onPress }: { video: VideoModel; onPress: (
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
     borderRadius: radii.lg,
     overflow: "hidden",
     marginHorizontal: spacing.lg,
@@ -124,7 +127,6 @@ const styles = StyleSheet.create({
     width: 180,
     borderRadius: radii.md,
     overflow: "hidden",
-    backgroundColor: colors.surface,
   },
   previewPlayer: {
     width: 180,

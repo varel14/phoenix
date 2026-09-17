@@ -5,7 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { useNetworkState } from "expo-network";
 import * as SplashScreen from "expo-splash-screen";
-import { colors } from "@/theme";
+import { ThemeProvider, useTheme } from "@/theme/theme-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import { useDownloadsStore } from "@/services/downloads/download-manager";
 import { useEventSync } from "@/hooks/use-event-sync";
@@ -45,9 +45,18 @@ export default function RootLayout() {
   if (!isReady) return null;
 
   return (
+    <ThemeProvider>
+      <RootNavigator />
+    </ThemeProvider>
+  );
+}
+
+function RootNavigator() {
+  const { colors, isDark } = useTheme();
+  return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style={isDark ? "light" : "dark"} />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />

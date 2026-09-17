@@ -1,5 +1,3 @@
-import { colors } from "@/theme";
-
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || Number.isNaN(seconds) || seconds <= 0) return "0:00";
   const total = Math.floor(seconds);
@@ -23,13 +21,14 @@ export function formatFileSize(bytes: number | null | undefined): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+/** Brand-family gradient pairs (purple→pink rebrand) for artwork placeholders. */
 const GRADIENTS = [
-  { from: colors.artworkFallbackA, to: colors.artworkFallbackB },
-  { from: "#134E4A", to: "#0F766E" },
-  { from: "#7F1D1D", to: "#B91C1C" },
-  { from: "#1E3A8A", to: "#2563EB" },
-  { from: "#4A044E", to: "#86198F" },
-  { from: "#14532D", to: "#16A34A" },
+  { from: "#8E2DE2", to: "#FF2E93" },
+  { from: "#5B21B6", to: "#C026D3" },
+  { from: "#6D28D9", to: "#FF5E8A" },
+  { from: "#4C1D95", to: "#9D174D" },
+  { from: "#7C3AED", to: "#F472B6" },
+  { from: "#312E81", to: "#8E2DE2" },
 ];
 
 /** Deterministic gradient pair for artwork placeholders. */
