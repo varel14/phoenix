@@ -1,0 +1,4 @@
+
+# generated prisma client (run: prisma generate)
+src/generated/
+dist/

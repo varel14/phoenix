@@ -1,0 +1,96 @@
+import { ScrollView, View } from "react-native";
+import { router } from "expo-router";
+import { colors, spacing } from "@/theme";
+import { useFavoriteIds, useSongs, useVideos } from "@/hooks/use-catalog";
+import { useArtists } from "@/hooks/use-library";
+import { AppText, ErrorView, LoadingView } from "@/components/ui";
+import { InteractiveRow } from "@/components/media/rows";
+import { Artwork } from "@/components/media/artwork";
+import { playerService } from "@/services/media/player-service";
+
+export default function HomeScreen() {
+  const songs = useSongs({ limit: 10, sort: "publishedAt", order: "desc" });
+  const videos = useVideos({ limit: 5, sort: "viewCount", order: "desc" });
+  const artists = useArtists();
+  const { ids: favoriteIds } = useFavoriteIds();
+
+  if (songs.isLoading || videos.isLoading || artists.isLoading) {
+    return <LoadingView label="Loading your music…" />;
+  }
+  if (songs.isError) {
+    return <ErrorView message={(songs.error as Error)?.message} onRetry={() => void songs.refetch()} />;
+  }
+
+  const newSongs = songs.data?.data ?? [];
+
+  return (
+    <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md }}>
+        <AppText variant="title">Phoenix</AppText>
+        <AppText variant="bodyMuted" style={{ marginTop: 2 }}>
+          Fresh for you today
+        </AppText>
+      </View>
+
+      <Section title="New releases">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
+          {newSongs.map((song) => (
+            <Artwork
+              key={song.id}
+              uri={song.thumbnailUrl}
+              seed={song.id}
+              label={song.title}
+              size={120}
+              radius={12}
+            />
+          ))}
+        </ScrollView>
+      </Section>
+
+      <Section title="Popular right now">
+        {newSongs.slice(0, 5).map((song) => (
+          <InteractiveRow
+            key={song.id}
+            media={song}
+            mediaType="SONG"
+            isFavorite={favoriteIds.has(song.id)}
+            onPlay={() => void playerService.playQueue(newSongs, newSongs.indexOf(song))}
+          />
+        ))}
+      </Section>
+
+      <Section title="Artists to follow">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
+          {(artists.data?.data ?? []).slice(0, 8).map((artist) => (
+            <ArtistPill key={artist.id} id={artist.id} name={artist.name} avatarUrl={artist.avatarUrl} />
+          ))}
+        </ScrollView>
+      </Section>
+    </ScrollView>
+  );
+}
+
+function ArtistPill({ id, name, avatarUrl }: { id: string; name: string; avatarUrl: string | null }) {
+  return (
+    <View style={{ width: 88, alignItems: "center", gap: spacing.xs }}>
+      <Artwork uri={avatarUrl} seed={id} label={name} size={80} radius={40} />
+      <AppText variant="caption" numberOfLines={1} style={{ textAlign: "center" }}>
+        {name}
+      </AppText>
+    </View>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={{ marginBottom: spacing.xl }}>
+      <AppText variant="heading" style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}>
+        {title}
+      </AppText>
+      {children}
+    </View>
+  );
+}
+
+void colors;
+void router;

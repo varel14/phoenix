@@ -1,0 +1,303 @@
+// Phoenix — Prisma schema (phases 1-3: auth, music, video, library, offline, artist space)
+// Better Auth owns the user/session/account/verification models (lowercase names).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ARTIST
+}
+
+enum MediaType {
+  SONG
+  VIDEO
+}
+
+enum EventType {
+  PLAY
+  VIEW
+  DOWNLOAD
+}
+
+enum DownloadStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth models
+// ---------------------------------------------------------------------------
+
+model user {
+  id            String     @id @default(uuid())
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false) @map("email_verified")
+  image         String?
+  role          UserRole   @default(USER)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  accounts       account[]
+  sessions       session[]
+  artist         Artist?
+  favorites      favorite[]
+  playlists      Playlist[]
+  downloads      Download[]
+  playbackEvents PlaybackEvent[]
+  follows        ArtistFollow[]
+
+  @@map("users")
+}
+
+model session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model account {
+  id                    String    @id @default(uuid())
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("accounts")
+}
+
+model verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @map("created_at")
+  updatedAt  DateTime @map("updated_at")
+
+  @@map("verifications")
+}
+
+// ---------------------------------------------------------------------------
+// Artist space
+// ---------------------------------------------------------------------------
+
+model Artist {
+  id         String   @id @default(uuid())
+  userId     String   @unique @map("user_id")
+  name       String
+  bio        String?
+  avatarUrl  String?  @map("avatar_url")
+  bannerUrl  String?  @map("banner_url")
+  isVerified Boolean  @default(false) @map("is_verified")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user      user           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  songs     Song[]
+  videos    Video[]
+  followers ArtistFollow[]
+
+  @@index([name])
+  @@map("artists")
+}
+
+model ArtistFollow {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  artistId  String   @map("artist_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, artistId])
+  @@index([artistId])
+  @@map("artist_follows")
+}
+
+// ---------------------------------------------------------------------------
+// Music catalog
+// ---------------------------------------------------------------------------
+
+model Song {
+  id             String   @id @default(uuid())
+  artistId       String   @map("artist_id")
+  title          String
+  genre          String?
+  albumName      String?  @map("album_name")
+  audioUrl       String   @map("audio_url")
+  thumbnailUrl   String?  @map("thumbnail_url")
+  mimeType       String?  @map("mime_type")
+  durationSec    Int?     @map("duration_sec")
+  fileSizeBytes  Int?     @map("file_size_bytes")
+  storageKey     String?  @map("storage_key")
+  isDownloadable Boolean  @default(true) @map("is_downloadable")
+  playCount      Int      @default(0) @map("play_count")
+  downloadCount  Int      @default(0) @map("download_count")
+  publishedAt    DateTime @default(now()) @map("published_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  artist        Artist         @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  favorites     favorite[]
+  playlistItems playlistItem[]
+  downloads     Download[]
+  events        PlaybackEvent[]
+
+  @@index([artistId])
+  @@index([title])
+  @@index([publishedAt])
+  @@map("songs")
+}
+
+model Video {
+  id            String   @id @default(uuid())
+  artistId      String   @map("artist_id")
+  title         String
+  description   String?
+  videoUrl      String   @map("video_url")
+  thumbnailUrl  String?  @map("thumbnail_url")
+  mimeType      String?  @map("mime_type")
+  durationSec   Int?     @map("duration_sec")
+  fileSizeBytes Int?     @map("file_size_bytes")
+  storageKey    String?  @map("storage_key")
+  isDownloadable Boolean @default(true) @map("is_downloadable")
+  viewCount     Int      @default(0) @map("view_count")
+  downloadCount Int      @default(0) @map("download_count")
+  publishedAt   DateTime @default(now()) @map("published_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  artist    Artist          @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  favorites favorite[]
+  downloads Download[]
+  events    PlaybackEvent[]
+
+  @@index([artistId])
+  @@index([title])
+  @@index([publishedAt])
+  @@map("videos")
+}
+
+// ---------------------------------------------------------------------------
+// Library: favorites, playlists, downloads
+// ---------------------------------------------------------------------------
+
+model favorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  songId    String?  @map("song_id")
+  videoId   String?  @map("video_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song  Song?  @relation(fields: [songId], references: [id], onDelete: Cascade)
+  video Video? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
+  @@unique([userId, videoId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+model Playlist {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user  user           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items playlistItem[]
+
+  @@index([userId])
+  @@map("playlists")
+}
+
+model playlistItem {
+  id         String   @id @default(uuid())
+  playlistId String   @map("playlist_id")
+  songId     String   @map("song_id")
+  position   Int
+  addedAt    DateTime @default(now()) @map("added_at")
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, songId])
+  @@index([playlistId])
+  @@map("playlist_items")
+}
+
+model Download {
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  songId        String?        @map("song_id")
+  videoId       String?        @map("video_id")
+  status        DownloadStatus @default(COMPLETED)
+  fileSizeBytes Int?           @map("file_size_bytes")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  completedAt   DateTime?      @map("completed_at")
+
+  user  user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song  Song?  @relation(fields: [songId], references: [id], onDelete: Cascade)
+  video Video? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
+  @@unique([userId, videoId])
+  @@index([userId])
+  @@map("downloads")
+}
+
+// ---------------------------------------------------------------------------
+// Offline-synced playback/view/download events (idempotent via clientEventId)
+// ---------------------------------------------------------------------------
+
+model PlaybackEvent {
+  id            String    @id @default(uuid())
+  clientEventId String    @unique @map("client_event_id")
+  userId        String    @map("user_id")
+  eventType     EventType @map("event_type")
+  songId        String?   @map("song_id")
+  videoId       String?   @map("video_id")
+  occurredAt    DateTime
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  user  user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song  Song?  @relation(fields: [songId], references: [id], onDelete: Cascade)
+  video Video? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([songId, eventType])
+  @@index([videoId, eventType])
+  @@map("playback_events")
+}
