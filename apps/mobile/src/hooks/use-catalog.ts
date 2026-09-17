@@ -50,7 +50,9 @@ export function useFavoriteIds() {
   const queryClient = useQueryClient();
 
   const favoritesQuery = useQuery({
-    queryKey: queryKeys.favorites(),
+    // Distinct key: useFavorites() caches paginated API responses under
+    // ["favorites", ...] — sharing this key with the Set would corrupt it.
+    queryKey: queryKeys.favoriteIds(),
     queryFn: async () => {
       const [songs, videos] = await Promise.all([
         favoritesApi.list("SONG", 1, 500),
@@ -64,17 +66,23 @@ export function useFavoriteIds() {
   });
 
   const setFavorite = (mediaType: MediaType, mediaId: string, favorite: boolean) => {
-    queryClient.setQueryData<Set<string>>(queryKeys.favorites(), (current) => {
+    queryClient.setQueryData<Set<string>>(queryKeys.favoriteIds(), (current) => {
       const next = new Set(current ?? []);
       const key = mediaType === "SONG" ? mediaId : mediaId;
       if (favorite) next.add(key);
       else next.delete(key);
       return next;
     });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.favoriteIds() });
     void queryClient.invalidateQueries({ queryKey: ["favorites"] });
   };
 
-  return { ids: favoritesQuery.data ?? new Set<string>(), isLoading: favoritesQuery.isLoading, setFavorite };
+  // instanceof guard: never trust cached shape for method calls.
+  return {
+    ids: favoritesQuery.data instanceof Set ? favoritesQuery.data : new Set<string>(),
+    isLoading: favoritesQuery.isLoading,
+    setFavorite,
+  };
 }
 
 /** Optimistic favorite toggle for songs and videos. */
@@ -89,7 +97,7 @@ export function useToggleFavorite() {
       return favorite ? videosApi.favorite(mediaId) : videosApi.unfavorite(mediaId);
     },
     onMutate: async ({ mediaType, mediaId, favorite }) => {
-      const key = queryKeys.favorites();
+      const key = queryKeys.favoriteIds();
       const previous = queryClient.getQueryData<Set<string>>(key);
       queryClient.setQueryData<Set<string>>(key, (current) => {
         const next = new Set(current ?? []);
@@ -105,6 +113,7 @@ export function useToggleFavorite() {
       }
     },
     onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.favoriteIds() });
       void queryClient.invalidateQueries({ queryKey: ["favorites"] });
     },
   });
