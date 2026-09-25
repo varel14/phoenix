@@ -5,6 +5,7 @@ import { layout, radii } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { artworkGradient, initials } from "@/utils/format";
 import { AppText } from "@/components/ui/primitives";
+import { resolveAssetUrl } from "@/services/api/api-client";
 
 interface ArtworkProps {
   uri?: string | null;
@@ -21,7 +22,7 @@ export function Artwork({ uri, seed, label, size, radius = radii.md }: ArtworkPr
   if (uri) {
     return (
       <Image
-        source={{ uri }}
+        source={{ uri: resolveAssetUrl(uri) }}
         style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.surface }}
         contentFit="cover"
         transition={150}

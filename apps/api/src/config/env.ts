@@ -19,6 +19,28 @@ const envSchema = z.object({
     }),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4000"),
   CORS_ORIGIN: z.string().default("*"),
+  /** Folder of local images served at GET /thumbnails (relative to apps/api). */
+  THUMBNAILS_DIR: z.string().default("../thumbnails"),
+  /** Folder of user-uploaded public files served at GET /uploads (relative to apps/api). */
+  UPLOADS_DIR: z.string().default("../uploads"),
+  /** Folder of protected digital product files (never served statically). */
+  DIGITAL_FILES_DIR: z.string().default("../digital-files"),
+  /** Active payment provider identifier (see lib/payment-providers). */
+  PAYMENT_PROVIDER: z.string().default("simulated"),
+  /** HMAC secret used to verify payment provider webhooks. */
+  PAYMENT_WEBHOOK_SECRET: z
+    .string()
+    .min(32, "PAYMENT_WEBHOOK_SECRET must be at least 32 characters (generate one with: openssl rand -base64 32)")
+    .optional()
+    .transform((value) => {
+      if (value) return value;
+      if (process.env["NODE_ENV"] === "production") {
+        throw new Error("PAYMENT_WEBHOOK_SECRET is required in production");
+      }
+      return "phoenix-development-webhook-secret-do-not-use";
+    }),
+  /** Max accepted upload size in megabytes. */
+  MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
 });
 
 const parsed = envSchema.safeParse(process.env);

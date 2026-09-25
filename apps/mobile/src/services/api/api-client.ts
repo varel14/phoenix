@@ -10,6 +10,16 @@ export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:400
 
 export const AUTH_BASE_URL = `${API_URL}/api/v1/auth`;
 
+/**
+ * Resolves server-provided media URLs. Relative paths (e.g. "/thumbnails/x.jpg",
+ * served by the API's static image library) are resolved against the API root;
+ * absolute URLs pass through untouched.
+ */
+export function resolveAssetUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
