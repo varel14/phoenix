@@ -57,10 +57,12 @@
         }
       ]
     ],
-     "extra": {
+    "extra": {
+      "router": {},
       "eas": {
-        "projectId": "862b4996-12d7-4881-838f-80d87c4c9e08"
+        "projectId": "c4fb449c-11b2-4ebe-9579-8f10b8e0e8f8"
       }
-    }
+    },
+    "owner": "npx237s-team"
   }
 }

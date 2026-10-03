@@ -10,3 +10,5 @@ minimumReleaseAgeExclude:
   - '@expo/router-server@57.0.10'
   - babel-preset-expo@57.0.12
   - expo@57.0.23
+patchedDependencies:
+  '@react-native-cookies/cookies@6.2.1': patches/@react-native-cookies__cookies@6.2.1.patch
