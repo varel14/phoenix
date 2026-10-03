@@ -67,3 +67,57 @@ The Expo app expects `EXPO_PUBLIC_API_URL` (see `apps/mobile/.env.example`), whi
 ```
 GET http://localhost:4000/health
 ```
+
+## Demo accounts
+
+Created by `pnpm db:seed`. Password for all of them: `phoenix123`.
+
+| Email | Role |
+|---|---|
+| `listener@phoenix.local` | Regular user (follows Aurora Waves) |
+| `aurora@phoenix.local` | Creator — Aurora Waves |
+| `solaris@phoenix.local` | Creator — The Solaris Band |
+| `celeste@phoenix.local` | Creator — Celeste Moreau |
+| `kaya@phoenix.local` | Creator — Kaya Sound System |
+
+The login screen lists these in dev builds (`__DEV__`). The seed also fills the
+Chuyassi Emmanuel Pay catalog (school fees, utilities, …), the boutique
+categories/products and demo catalog media (SoundHelix MP3s, Google sample
+videos, local `/thumbnails` images).
+
+## Connecting a device
+
+`EXPO_PUBLIC_API_URL` (in `apps/mobile/.env`) is baked in at bundle time —
+restart the Expo dev server after changing it.
+
+- Android emulator: `http://10.0.2.2:4000`
+- iOS simulator: `http://localhost:4000`
+- Physical device: `http://<your-LAN-IP>:4000` (same Wi-Fi), and set
+  `CORS_ORIGIN` in `apps/api/.env` accordingly if you restrict it.
+
+## Testing
+
+API suite (16 files: auth, artists, favorites, playlists, downloads,
+subscriptions, events, conversations, calls/realtime, payments, marketplace,
+uploads, push). Tests run against a dedicated `phoenix_test` database — derived
+from `DATABASE_URL` by swapping the database name — so the dev database in
+Docker must be up:
+
+```sh
+pnpm --filter api test          # full suite
+pnpm --filter api test:watch    # watch mode
+```
+
+Payments use a simulated provider in dev: after initiating a payment in the app
+(boutique checkout or a Pay service form), a **"Confirmer le paiement (démo)"**
+button appears — it calls `POST /api/v1/payments/:reference/dev-confirm`,
+which is disabled in production. WebRTC calls work device-to-device on the same
+network without extra setup; symmetric-NAT scenarios need the TURN settings in
+`apps/api/.env.example`.
+
+Manual smoke path: register or log in as `listener@phoenix.local` → play a
+song → favorite it → subscribe on the Premium screen → download a track →
+airplane-mode playback → boutique add-to-cart → checkout → dev-confirm →
+orders screen → Pay flow → messages/voice note → call between two devices →
+studio (as `aurora@phoenix.local`) publish a song.
+
