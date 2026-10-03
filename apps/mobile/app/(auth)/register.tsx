@@ -41,7 +41,7 @@ export default function RegisterScreen() {
       await refresh();
       router.replace("/(tabs)");
     } catch {
-      setError("Cannot reach the Phoenix server. Check your connection.");
+      setError("Cannot reach the server. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function RegisterScreen() {
         <View style={{ marginBottom: spacing.xxl, alignItems: "center", gap: spacing.md }}>
           <PhoenixLogo size={64} />
           <View style={{ alignItems: "center", gap: spacing.xs }}>
-            <AppText variant="title">Rejoignez Phoenix</AppText>
+            <AppText variant="title">Rejoignez Chuyassi Emmanuel CE</AppText>
             <AppText variant="bodyMuted" align="center">
               Stream songs and videos, build playlists, listen offline.
             </AppText>

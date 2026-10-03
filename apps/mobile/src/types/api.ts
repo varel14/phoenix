@@ -1,4 +1,4 @@
-/** API resource shapes returned by the Phoenix API. */
+/** API resource shapes returned by the Chuyassi Emmanuel CE API. */
 
 export interface ArtistSummary {
   id: string;
@@ -107,6 +107,23 @@ export interface ArtistStats {
   views: number;
   downloads: number;
   subscribers: number;
+  favorites: number;
+  songs: number;
+  videos: number;
+  topSongs: Array<{
+    id: string;
+    title: string;
+    playCount: number;
+    downloadCount: number;
+    favorites: number;
+  }>;
+  topVideos: Array<{
+    id: string;
+    title: string;
+    viewCount: number;
+    downloadCount: number;
+  }>;
+  daily: Array<{ date: string; plays: number; views: number }>;
 }
 
 export type MediaType = "SONG" | "VIDEO";
@@ -117,3 +134,52 @@ export type SessionUser = {
   role: "USER" | "ARTIST";
   image: string | null;
 };
+
+// -- Page subscription (2 500 FCFA/mois) & download royalties (1 FCFA/mois) ---
+
+export type PageSubscriptionStatus = "ACTIVE" | "CANCELLED" | "EXPIRED";
+
+export interface PageSubscription {
+  id: string;
+  userId: string;
+  artistId: string;
+  monthlyAmount: number;
+  currency: string;
+  status: PageSubscriptionStatus;
+  autoRenew: boolean;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelledAt: string | null;
+  artist?: { id: string; name: string; avatarUrl: string | null };
+}
+
+export interface SubscriptionPricing {
+  monthlyPrice: number;
+  downloadRoyalty: number;
+  currency: string;
+}
+
+export interface SubscriptionStatus {
+  subscription: PageSubscription | null;
+  pricing: SubscriptionPricing;
+  usage: {
+    downloadedTracks: number;
+    royaltyDueThisMonth: number;
+    royaltyTotal: number;
+  };
+  history: Array<{ periodStart: string; downloads: number; amount: number }>;
+}
+
+export interface RoyaltyMonth {
+  periodStart: string;
+  downloads: number;
+  amount: number;
+}
+
+export interface ArtistRoyaltyEarnings {
+  artist: { id: string; name: string };
+  months: RoyaltyMonth[];
+  total: number;
+  subscribers: number;
+  pricing: SubscriptionPricing;
+}

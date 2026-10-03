@@ -2,6 +2,12 @@ import { z } from "zod";
 
 export const uuidSchema = z.string().uuid("Must be a valid UUID");
 
+/**
+ * Better Auth user ids are 32-char alphanumeric (not UUIDs); Prisma-generated
+ * entity ids are UUIDs. Accepts both wherever a user reference is expected.
+ */
+export const userIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,40}$/, "Must be a valid identifier");
+
 export const idParamsSchema = z.object({
   id: uuidSchema,
 });

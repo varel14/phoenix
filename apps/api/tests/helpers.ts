@@ -1,6 +1,7 @@
 import request from "supertest";
 import type { Express } from "express";
 import { prisma } from "../src/config/prisma.js";
+import { uploadsDir } from "../src/lib/storage.js";
 
 let appInstance: Express | undefined;
 
@@ -13,10 +14,22 @@ export async function api() {
   return request(appInstance);
 }
 
+/** Public uploads folder — lets tests clean up files written by the upload endpoint. */
+export function uploadsDirForTests(): string {
+  return uploadsDir();
+}
+
 export async function truncateAll() {
   await prisma.$executeRawUnsafe(
     `TRUNCATE users, sessions, accounts, verifications, artists, songs, videos,
-     favorites, playlists, playlist_items, downloads, playback_events, artist_follows
+     favorites, playlists, playlist_items, downloads, playback_events, artist_follows,
+     page_subscriptions, download_royalties,
+     conversations, conversation_participants, messages, message_attachments, calls,
+     push_tokens,
+     payment_categories, payment_services, payment_service_fields,
+     payment_transactions, payment_receipts,
+     product_categories, products, product_variants, product_images,
+     carts, cart_items, orders, order_items, order_addresses
      CASCADE`,
   );
 }

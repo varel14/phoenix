@@ -39,3 +39,7 @@ yarn-error.log*
 
 # ZCode session tooling
 .zcode/
+
+# runtime storage (voice notes, product images, protected digital purchases)
+apps/uploads/
+apps/digital-files/test-ebook.pdf

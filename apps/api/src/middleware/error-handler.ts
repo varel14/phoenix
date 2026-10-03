@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import multer from "multer";
 import { ZodError } from "zod";
 import { Prisma } from "../generated/prisma/client.js";
 import { AppError } from "../lib/errors.js";
@@ -8,6 +9,12 @@ import { env } from "../config/env.js";
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof AppError) {
     sendError(res, err.status, err.code, err.message, err.details);
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large" : "File upload failed";
+    sendError(res, 400, "UPLOAD_ERROR", message);
     return;
   }
 

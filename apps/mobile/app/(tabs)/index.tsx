@@ -89,6 +89,31 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
 
+      {/* Chuyassi Emmanuel Pay / Exchange entry */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push("/pay")}
+        style={{ marginHorizontal: spacing.lg, marginBottom: spacing.xl }}
+      >
+        <LinearGradient
+          colors={gradients.premium}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ borderRadius: radii.lg, padding: spacing.xl, gap: 6 }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+            <Ionicons name="card" size={14} color="#3D2500" />
+            <AppText variant="small" color="#3D2500" style={{ letterSpacing: 1.5 }}>
+              CHUYASSI EMMANUEL PAY
+            </AppText>
+          </View>
+          <AppText variant="heading" color="#2A1A00">
+            Payer / Échanger
+          </AppText>
+          <AppText color="#4A3000">Frais scolaires, factures, services administratifs — réglez tout depuis l'application.</AppText>
+        </LinearGradient>
+      </Pressable>
+
       <Section title="New releases">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
           {newSongs.map((song) => (

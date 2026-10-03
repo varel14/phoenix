@@ -93,6 +93,7 @@ export interface SongPublishBody {
   mimeType?: string | null;
   durationSec?: number | null;
   fileSizeBytes?: number | null;
+  storageKey?: string | null;
   isDownloadable?: boolean;
 }
 
@@ -104,5 +105,6 @@ export interface VideoPublishBody {
   mimeType?: string | null;
   durationSec?: number | null;
   fileSizeBytes?: number | null;
+  storageKey?: string | null;
   isDownloadable?: boolean;
 }

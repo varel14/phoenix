@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { Alert } from "react-native";
+import { router } from "expo-router";
 import { File } from "expo-file-system";
 import {
   discardPart,
@@ -15,10 +17,15 @@ import { setSourceResolver } from "@/services/media/source-resolver";
 import { playerService } from "@/services/media/player-service";
 import { trackEvent } from "@/services/events/event-queue";
 import { downloadsApi } from "@/services/api/library-api";
+import { subscriptionsApi } from "@/services/api/subscriptions-api";
+import { ApiError } from "@/services/api/api-client";
 import type { LocalMediaEntry } from "./local-library";
 import type { MediaType, Song, Video } from "@/types/api";
 
 export type DownloadState = "downloading" | "paused" | "completed" | "failed";
+
+export const SUBSCRIPTION_REQUIRED_MESSAGE =
+  "Abonnement requis — abonnez-vous à la page de l'artiste (2 500 FCFA/mois) pour télécharger.";
 
 export interface DownloadItemState {
   mediaType: MediaType;
@@ -64,6 +71,14 @@ function asMediaRef(media: Song | Video): { mediaType: MediaType; mediaId: strin
     : { mediaType: "VIDEO", mediaId: media.id, title: media.title };
 }
 
+/** Blocks the download and offers the subscriptions screen. */
+function warnSubscriptionRequired() {
+  Alert.alert("Abonnement requis", SUBSCRIPTION_REQUIRED_MESSAGE, [
+    { text: "Plus tard", style: "cancel" },
+    { text: "S'abonner", onPress: () => router.push("/premium") },
+  ]);
+}
+
 export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   items: {},
   library: [],
@@ -99,6 +114,50 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     const url = isSong(media) ? media.audioUrl : media.videoUrl;
     if (isSong(media) && !media.isDownloadable) return;
     if (!isSong(media) && !media.isDownloadable) return;
+
+    // Page subscription gate: downloads cost 1 FCFA/month to the artist under
+    // the cover of the 2 500 FCFA/month page subscription, so the server must
+    // see an active subscription. A network failure (offline, server down)
+    // stays permissive here — the authoritative check happens at registration.
+    try {
+      const status = await subscriptionsApi.getStatus();
+      if (!status.subscription || status.subscription.status !== "ACTIVE") {
+        set((state) => ({
+          items: {
+            ...state.items,
+            [key]: {
+              mediaType,
+              mediaId,
+              title: asMediaRef(media).title,
+              progress: 0,
+              state: "failed",
+              error: SUBSCRIPTION_REQUIRED_MESSAGE,
+            },
+          },
+        }));
+        warnSubscriptionRequired();
+        return;
+      }
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 403 || error.status === 401)) {
+        set((state) => ({
+          items: {
+            ...state.items,
+            [key]: {
+              mediaType,
+              mediaId,
+              title: asMediaRef(media).title,
+              progress: 0,
+              state: "failed",
+              error: SUBSCRIPTION_REQUIRED_MESSAGE,
+            },
+          },
+        }));
+        warnSubscriptionRequired();
+        return;
+      }
+      // Network error — fall through and try; the server decides at registration.
+    }
 
     const part = partDestination(mediaType, mediaId, url);
     const task = File.createDownloadTask(url, part);
@@ -143,10 +202,27 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
           library: [entry, ...state.library.filter((candidate) => taskKey(candidate.mediaType, candidate.mediaId) !== key)],
         }));
 
-        // Server record + offline-safe DOWNLOAD event (best effort).
-        downloadsApi.register(mediaType, mediaId).catch(() => {
+        // Server record + offline-safe DOWNLOAD event (best effort). A
+        // SUBSCRIPTION_REQUIRED rejection means the page subscription lapsed
+        // mid-flight: discard the local copy so no track is kept unpaid.
+        try {
+          await downloadsApi.register(mediaType, mediaId);
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "SUBSCRIPTION_REQUIRED") {
+            await removeLocalEntry(mediaType, mediaId);
+            activeTasks.delete(key);
+            set((state) => ({
+              library: state.library.filter((candidate) => taskKey(candidate.mediaType, candidate.mediaId) !== key),
+              items: {
+                ...state.items,
+                [key]: { ...state.items[key]!, progress: 0, state: "failed", error: SUBSCRIPTION_REQUIRED_MESSAGE },
+              },
+            }));
+            warnSubscriptionRequired();
+            return;
+          }
           trackEvent({ eventType: "DOWNLOAD", mediaType, ...(mediaType === "SONG" ? { songId: mediaId } : { videoId: mediaId }) });
-        });
+        }
         if (mediaType === "SONG") {
           playerService.reloadCurrentIfActive(mediaId);
         }

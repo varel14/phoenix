@@ -24,8 +24,8 @@ export function PhoenixLogo({ size = 88 }: { size?: number }) {
       >
         <Ionicons name="musical-notes" size={size * 0.5} color={colors.onPrimary} />
       </LinearGradient>
-      <AppText variant="title" style={{ letterSpacing: 4 }}>
-        PHOENIX
+      <AppText variant="title" style={{ letterSpacing: 2 }}>
+        CHUYASSI EMMANUEL CE
       </AppText>
     </View>
   );

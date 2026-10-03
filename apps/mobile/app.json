@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Phoenix",
-    "slug": "phoenix",
+    "name": "Chuyassi Emmanuel CE",
+    "slug": "chuyassi-emmanuel-ce",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "phoenix",
+    "scheme": "chuyassi",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -14,11 +14,18 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "NSMicrophoneUsageDescription": "Chuyassi Emmanuel CE a besoin d'accéder au micro pour enregistrer des messages vocaux et passer des appels.",
+        "NSCameraUsageDescription": "Chuyassi Emmanuel CE a besoin d'accéder à la caméra pour passer des appels vidéo."
       }
     },
     "android": {
       "package": "com.phoenix.mobile",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0A0914",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -33,6 +40,8 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-notifications",
+      "react-native-webrtc",
       [
         "expo-splash-screen",
         {

@@ -1,5 +1,5 @@
 /**
- * Phoenix design tokens — rebrand per mockup: purple→pink gradient brand,
+ * Chuyassi Emmanuel CE design tokens — rebrand per mockup: purple→pink gradient brand,
  * dark-mode-first with a full light palette. Colors are exposed through the
  * ThemeProvider/useTheme hook so they respond to the active color scheme;
  * spacing/radii/typography/layout/gradients are scheme-independent.
@@ -90,7 +90,7 @@ export const lightColors: Palette = {
   onGradientMuted: "rgba(255, 255, 255, 0.9)",
 };
 
-/** Brand gradient pairs — the heart of the Phoenix rebrand. */
+/** Brand gradient pairs — the heart of the brand. */
 export const gradients = {
   /** Primary brand: purple → pink. */
   brand: ["#8E2DE2", "#FF2E93"] as const,

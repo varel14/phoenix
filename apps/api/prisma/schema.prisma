@@ -13,6 +13,14 @@ datasource db {
 enum UserRole {
   USER
   ARTIST
+  ADMIN
+}
+
+// Shared publication states for user-facing content (prayers, sermons).
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
 }
 
 enum MediaType {
@@ -30,6 +38,114 @@ enum DownloadStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+}
+
+enum PageSubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum SheetMusicJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AdvertiserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum AdCampaignStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PENDING_REVIEW
+  APPROVED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum AdCreativeFormat {
+  IMAGE
+  VIDEO
+}
+
+enum AdEventType {
+  IMPRESSION
+  VIEW
+  CLICK
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MessageType {
+  TEXT
+  VOICE
+  IMAGE
+  VIDEO
+  FILE
+  SYSTEM
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACCEPTED
+  REJECTED
+  MISSED
+  ENDED
+  FAILED
+}
+
+enum PaymentPricingMode {
+  FIXED
+  FREE
+}
+
+enum PaymentFieldType {
+  TEXT
+  NUMBER
+  PHONE
+  EMAIL
+  SELECT
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum ProductType {
+  PHYSICAL
+  DIGITAL
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +170,22 @@ model user {
   downloads      Download[]
   playbackEvents PlaybackEvent[]
   follows        ArtistFollow[]
+  pageSubscriptions PageSubscription[]
+  paidRoyalties  DownloadRoyalty[]
+  conversationMemberships ConversationParticipant[]
+  messagesSent   Message[] @relation("MessageSender")
+  callsPlaced    Call[] @relation("CallsPlaced")
+  callsReceived  Call[] @relation("CallsReceived")
+  pushTokens     PushToken[]
+  paymentTransactions PaymentTransaction[]
+  orders         Order[]
+  cart           Cart?
+  prayers        Prayer[]
+  prayerFavorites PrayerFavorite[]
+  sermons        Sermon[]
+  sheetMusicJobs SheetMusicJob[]
+  advertiser     Advertiser?
+  adEvents       AdEvent[]
 
   @@map("users")
 }
@@ -123,6 +255,9 @@ model Artist {
   songs     Song[]
   videos    Video[]
   followers ArtistFollow[]
+  products  Product[]
+  subscribers PageSubscription[]
+  royaltiesEarned DownloadRoyalty[]
 
   @@index([name])
   @@map("artists")
@@ -170,6 +305,7 @@ model Song {
   playlistItems playlistItem[]
   downloads     Download[]
   events        PlaybackEvent[]
+  sheetMusicJobs SheetMusicJob[]
 
   @@index([artistId])
   @@index([title])
@@ -271,11 +407,60 @@ model Download {
   user  user   @relation(fields: [userId], references: [id], onDelete: Cascade)
   song  Song?  @relation(fields: [songId], references: [id], onDelete: Cascade)
   video Video? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  royalties DownloadRoyalty[]
 
   @@unique([userId, songId])
   @@unique([userId, videoId])
   @@index([userId])
   @@map("downloads")
+}
+
+// ---------------------------------------------------------------------------
+// Page subscription: 2 500 FCFA/month to access the artist's page; each
+// downloaded track accrues a 1 FCFA/month royalty paid to the artist.
+// ---------------------------------------------------------------------------
+
+model PageSubscription {
+  id                 String                 @id @default(uuid())
+  userId             String                 @map("user_id")
+  artistId           String                 @map("artist_id")
+  monthlyAmount      Int                    @default(2500) @map("monthly_amount")
+  currency           String                 @default("XOF")
+  status             PageSubscriptionStatus @default(ACTIVE)
+  autoRenew          Boolean                @default(true) @map("auto_renew")
+  currentPeriodStart DateTime               @default(now()) @map("current_period_start")
+  currentPeriodEnd   DateTime               @map("current_period_end")
+  cancelledAt        DateTime?              @map("cancelled_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+
+  user   user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, artistId])
+  @@index([artistId, status])
+  @@map("page_subscriptions")
+}
+
+/** One row per downloaded track per month: the 1 FCFA royalty owed to the artist. */
+model DownloadRoyalty {
+  id          String   @id @default(uuid())
+  downloadId  String   @map("download_id")
+  artistId    String   @map("artist_id")
+  userId      String   @map("user_id")
+  periodStart DateTime @map("period_start")
+  amount      Int      @default(1)
+  currency    String   @default("XOF")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  download Download @relation(fields: [downloadId], references: [id], onDelete: Cascade)
+  artist   Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  user     user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([downloadId, periodStart])
+  @@index([artistId, periodStart])
+  @@index([userId])
+  @@map("download_royalties")
 }
 
 // ---------------------------------------------------------------------------
@@ -300,4 +485,646 @@ model PlaybackEvent {
   @@index([songId, eventType])
   @@index([videoId, eventType])
   @@map("playback_events")
+}
+
+// ---------------------------------------------------------------------------
+// SCL communication: conversations, messages, calls
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id        String           @id @default(uuid())
+  type      ConversationType @default(DIRECT)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  participants ConversationParticipant[]
+  messages     Message[]
+  calls        Call[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  lastReadAt     DateTime? @map("last_read_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  conversationId String      @map("conversation_id")
+  senderId       String      @map("sender_id")
+  type           MessageType @default(TEXT)
+  content        String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       user                @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  attachment   MessageAttachment?
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id            String   @id @default(uuid())
+  messageId     String   @unique @map("message_id")
+  url           String
+  storageKey    String   @map("storage_key")
+  mimeType      String?  @map("mime_type")
+  fileSizeBytes Int?     @map("file_size_bytes")
+  durationSec   Int?     @map("duration_sec")
+  name          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("message_attachments")
+}
+
+model Call {
+  id             String     @id @default(uuid())
+  conversationId String?    @map("conversation_id")
+  callerId       String     @map("caller_id")
+  recipientId    String     @map("recipient_id")
+  type           CallType   @default(AUDIO)
+  status         CallStatus @default(RINGING)
+  startedAt      DateTime   @default(now()) @map("started_at")
+  answeredAt     DateTime?  @map("answered_at")
+  endedAt        DateTime?  @map("ended_at")
+  durationSec    Int?       @map("duration_sec")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  caller       user          @relation("CallsPlaced", fields: [callerId], references: [id], onDelete: Cascade)
+  recipient    user          @relation("CallsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([conversationId])
+  @@map("calls")
+}
+
+enum PushPlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+model PushToken {
+  id         String       @id @default(uuid())
+  userId     String       @map("user_id")
+  token      String       @unique
+  platform   PushPlatform @default(ANDROID)
+  deviceId   String?      @map("device_id")
+  appVersion String?      @map("app_version")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Chuyassi Emmanuel Pay / Exchange
+// ---------------------------------------------------------------------------
+
+model PaymentCategory {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  icon      String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  services PaymentService[]
+
+  @@map("payment_categories")
+}
+
+model PaymentService {
+  id          String             @id @default(uuid())
+  categoryId  String             @map("category_id")
+  name        String
+  description String?
+  imageUrl    String?            @map("image_url")
+  isActive    Boolean            @default(true) @map("is_active")
+  pricingMode PaymentPricingMode @default(FIXED) @map("pricing_mode")
+  fixedPrice  Int?               @map("fixed_price")
+  minPrice    Int?               @map("min_price")
+  currency    String             @default("XOF")
+  metadata    Json?
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  category     PaymentCategory       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  fields       PaymentServiceField[]
+  transactions PaymentTransaction[]
+
+  @@index([categoryId])
+  @@map("payment_services")
+}
+
+model PaymentServiceField {
+  id          String           @id @default(uuid())
+  serviceId   String           @map("service_id")
+  key         String
+  label       String
+  type        PaymentFieldType @default(TEXT)
+  required    Boolean          @default(true)
+  placeholder String?
+  options     Json?
+  sortOrder   Int              @default(0) @map("sort_order")
+
+  service PaymentService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, key])
+  @@map("payment_service_fields")
+}
+
+model PaymentTransaction {
+  id                String                   @id @default(uuid())
+  userId            String                   @map("user_id")
+  serviceId         String?                  @map("service_id")
+  orderId           String?                  @unique @map("order_id")
+  adCampaignId      String?                  @unique @map("ad_campaign_id")
+  reference         String                   @unique
+  provider          String                   @default("simulated")
+  providerReference String?                  @unique @map("provider_reference")
+  amount            Int
+  currency          String                   @default("XOF")
+  status            PaymentTransactionStatus @default(PENDING)
+  metadata          Json?
+  paidAt            DateTime?                @map("paid_at")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  user       user            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service    PaymentService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  order      Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  adCampaign AdCampaign?     @relation(fields: [adCampaignId], references: [id], onDelete: SetNull)
+  receipt    PaymentReceipt?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model PaymentReceipt {
+  id                String   @id @default(uuid())
+  transactionId     String   @unique @map("transaction_id")
+  reference         String   @unique
+  externalReference String?  @map("external_reference")
+  amount            Int
+  currency          String
+  method            String?
+  issuedAt          DateTime @default(now()) @map("issued_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  transaction PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("payment_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Boutique / Marketplace
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  imageUrl  String?  @map("image_url")
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id                String      @id @default(uuid())
+  sellerId          String      @map("seller_id")
+  categoryId        String      @map("category_id")
+  name              String
+  description       String?
+  type              ProductType @default(PHYSICAL)
+  price             Int
+  currency          String      @default("XOF")
+  stock             Int?
+  sku               String?
+  weightGrams       Int?        @map("weight_grams")
+  digitalStorageKey String?     @map("digital_storage_key")
+  downloadLimit     Int?        @map("download_limit")
+  isActive          Boolean     @default(true) @map("is_active")
+  metadata          Json?
+  publishedAt       DateTime    @default(now()) @map("published_at")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  seller     Artist           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category   ProductCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants   ProductVariant[]
+  images     ProductImage[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([sellerId])
+  @@index([name])
+  @@index([type, isActive])
+  @@map("products")
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  productId     String   @map("product_id")
+  name          String
+  sku           String?  @unique
+  priceOverride Int?     @map("price_override")
+  stock         Int?
+  attributes    Json?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@unique([productId, name])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  user       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String   @map("cart_id")
+  productId String   @map("product_id")
+  variantId String?  @map("variant_id")
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId, variantId])
+  @@map("cart_items")
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  reference   String      @unique
+  status      OrderStatus @default(AWAITING_PAYMENT)
+  subtotal    Int
+  shippingFee Int         @default(0) @map("shipping_fee")
+  total       Int
+  currency    String      @default("XOF")
+  paidAt      DateTime?   @map("paid_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  user         user                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items        OrderItem[]
+  address      OrderAddress?
+  transactions PaymentTransaction[]
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String      @id @default(uuid())
+  orderId           String      @map("order_id")
+  productId         String?     @map("product_id")
+  variantId         String?     @map("variant_id")
+  productName       String      @map("product_name")
+  variantName       String?     @map("variant_name")
+  productType       ProductType @map("product_type")
+  digitalStorageKey String?     @map("digital_storage_key")
+  downloadLimit     Int?        @map("download_limit")
+  downloadCount     Int         @default(0) @map("download_count")
+  unitPrice         Int         @map("unit_price")
+  quantity          Int
+  lineTotal         Int         @map("line_total")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderAddress {
+  id            String   @id @default(uuid())
+  orderId       String   @unique @map("order_id")
+  recipientName String   @map("recipient_name")
+  phone         String
+  city          String
+  area          String?
+  addressLine   String?  @map("address_line")
+  instructions  String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_addresses")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Prayer space
+// ---------------------------------------------------------------------------
+
+model PrayerCategory {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  prayers Prayer[]
+  sermons Sermon[]
+
+  @@map("prayer_categories")
+}
+
+model Prayer {
+  id               String        @id @default(uuid())
+  authorId         String        @map("author_id")
+  categoryId       String        @map("category_id")
+  title            String
+  content          String?
+  audioUrl         String?       @map("audio_url")
+  audioStorageKey  String?       @map("audio_storage_key")
+  audioDurationSec Int?          @map("audio_duration_sec")
+  status           ContentStatus @default(DRAFT)
+  publishedAt      DateTime?     @map("published_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  author    user             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  category  PrayerCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  favorites PrayerFavorite[]
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status])
+  @@index([authorId, createdAt])
+  @@map("prayers")
+}
+
+model PrayerFavorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  prayerId  String   @map("prayer_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prayer Prayer @relation(fields: [prayerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, prayerId])
+  @@index([prayerId])
+  @@map("prayer_favorites")
+}
+
+model Sermon {
+  id               String        @id @default(uuid())
+  authorId         String        @map("author_id")
+  categoryId       String?       @map("category_id")
+  title            String
+  description      String?
+  speakerName      String        @map("speaker_name")
+  audioUrl         String        @map("audio_url")
+  audioDurationSec Int?          @map("audio_duration_sec")
+  imageUrl         String?       @map("image_url")
+  status           ContentStatus @default(PUBLISHED)
+  publishedAt      DateTime      @default(now()) @map("published_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  author   user            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  category PrayerCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@map("sermons")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Music tools: automatic sheet music generation
+// ---------------------------------------------------------------------------
+
+model SheetMusicJob {
+  id              String             @id @default(uuid())
+  userId          String             @map("user_id")
+  sourceSongId    String?            @map("source_song_id")
+  sourceUrl       String?            @map("source_url")
+  sourceStorageKey String?           @map("source_storage_key")
+  sourceName      String             @map("source_name")
+  status          SheetMusicJobStatus @default(PENDING)
+  progress        Int?
+  errorCode       String?            @map("error_code")
+  errorMessage    String?            @map("error_message")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  startedAt       DateTime?          @map("started_at")
+  completedAt     DateTime?          @map("completed_at")
+
+  user   user                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song   Song?                @relation(fields: [sourceSongId], references: [id], onDelete: SetNull)
+  result GeneratedSheetMusic?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("sheet_music_jobs")
+}
+
+model GeneratedSheetMusic {
+  id           String   @id @default(uuid())
+  jobId        String   @unique @map("job_id")
+  tempoBpm     Int?     @map("tempo_bpm")
+  timeSignature String? @map("time_signature")
+  noteCount    Int      @map("note_count")
+  measureCount Int      @map("measure_count")
+  confidence   Float
+  engine       String
+  notes        Json
+  musicXml     String   @map("music_xml")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  job SheetMusicJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("generated_sheet_music")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9 — Advertising
+// ---------------------------------------------------------------------------
+
+model Advertiser {
+  id           String           @id @default(uuid())
+  userId       String           @unique @map("user_id")
+  name         String
+  businessName String?          @map("business_name")
+  contactEmail String?          @map("contact_email")
+  contactPhone String?          @map("contact_phone")
+  status       AdvertiserStatus @default(ACTIVE)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  user      user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns AdCampaign[]
+
+  @@map("advertisers")
+}
+
+model AdPlacement {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  campaigns AdCampaign[]
+
+  @@map("ad_placements")
+}
+
+model AdCampaign {
+  id              String          @id @default(uuid())
+  advertiserId    String          @map("advertiser_id")
+  placementId     String          @map("placement_id")
+  name            String
+  startDate       DateTime        @map("start_date")
+  endDate         DateTime        @map("end_date")
+  budget          Int
+  currency        String          @default("XOF")
+  status          AdCampaignStatus @default(DRAFT)
+  rejectionReason String?         @map("rejection_reason")
+  reviewedById    String?         @map("reviewed_by_id")
+  reviewedAt      DateTime?       @map("reviewed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  advertiser   Advertiser           @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  placement    AdPlacement          @relation(fields: [placementId], references: [id], onDelete: Restrict)
+  creatives    AdCreative[]
+  events       AdEvent[]
+  transactions PaymentTransaction[]
+
+  @@index([status, placementId])
+  @@index([advertiserId, createdAt])
+  @@map("ad_campaigns")
+}
+
+model AdCreative {
+  id            String           @id @default(uuid())
+  campaignId    String           @map("campaign_id")
+  format        AdCreativeFormat
+  mediaUrl      String           @map("media_url")
+  storageKey    String?          @map("storage_key")
+  mimeType      String?          @map("mime_type")
+  fileSizeBytes Int?             @map("file_size_bytes")
+  durationSec   Int?             @map("duration_sec")
+  headline      String
+  description   String?
+  ctaLabel      String?          @map("cta_label")
+  actionUrl     String?          @map("action_url")
+  isActive      Boolean          @default(true) @map("is_active")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  events   AdEvent[]
+
+  @@index([campaignId])
+  @@map("ad_creatives")
+}
+
+model AdEvent {
+  id            String      @id @default(uuid())
+  campaignId    String      @map("campaign_id")
+  creativeId    String?     @map("creative_id")
+  placementKey  String      @map("placement_key")
+  eventType     AdEventType @map("event_type")
+  userId        String?     @map("user_id")
+  clientId      String      @map("client_id")
+  clientEventId String      @unique @map("client_event_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creative AdCreative? @relation(fields: [creativeId], references: [id], onDelete: SetNull)
+  user     user?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, eventType])
+  @@index([placementKey, eventType, createdAt])
+  @@map("ad_events")
+}
+
+// ---------------------------------------------------------------------------
+// Activity/audit trail for sensitive operations (payments, moderation, reviews)
+// ---------------------------------------------------------------------------
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@map("activity_logs")
 }

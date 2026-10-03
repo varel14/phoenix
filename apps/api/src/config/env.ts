@@ -1,6 +1,14 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/** Treats empty/blank env values as unset (optional fields). */
+function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    schema.optional(),
+  );
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -41,6 +49,34 @@ const envSchema = z.object({
     }),
   /** Max accepted upload size in megabytes. */
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
+  /** How long an unanswered call keeps ringing (ms) before the server marks it MISSED. */
+  RING_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
+  /**
+   * TURN relay for WebRTC calls — without one, direct P2P fails behind
+   * symmetric NAT / carrier CGNAT. Comma-separated relay URLs, e.g.
+   * "turn:turn.example.com:3478,turns:turn.example.com:5349".
+   */
+  TURN_URL: emptyAsUndefined(z.string().min(1)),
+  /** Static long-term TURN credentials (coturn lt-cred-mech). */
+  TURN_USERNAME: emptyAsUndefined(z.string().min(1)),
+  TURN_CREDENTIAL: emptyAsUndefined(z.string().min(1)),
+  /** coturn "use-auth-secret" shared secret — time-limited HMAC credentials, preferred over static ones. */
+  TURN_AUTH_SECRET: emptyAsUndefined(z.string().min(1)),
+  /** Lifetime of TURN REST API credentials, in seconds. */
+  TURN_CREDENTIAL_TTL_SEC: z.coerce.number().int().positive().default(3600),
+  /** Expo push service access token (EAS dashboard). Optional: without it pushes still deliver at a lower rate. */
+  EXPO_PUSH_ACCESS_TOKEN: emptyAsUndefined(z.string().min(1)),
+  /**
+   * Cloudflare R2 (S3-compatible) object storage. When all four credentials
+   * are set, uploads are stored in the bucket and public media is served
+   * straight from R2_PUBLIC_BASE_URL; otherwise files stay on local disk.
+   */
+  R2_ACCOUNT_ID: emptyAsUndefined(z.string().min(1)),
+  R2_ACCESS_KEY_ID: emptyAsUndefined(z.string().min(1)),
+  R2_SECRET_ACCESS_KEY: emptyAsUndefined(z.string().min(1)),
+  R2_BUCKET: emptyAsUndefined(z.string().min(1)),
+  /** Public base URL of the bucket (https://pub-<id>.r2.dev or a custom domain), no trailing slash. */
+  R2_PUBLIC_BASE_URL: emptyAsUndefined(z.string().url()).transform((value) => value?.replace(/\/+$/, "")),
 });
 
 const parsed = envSchema.safeParse(process.env);

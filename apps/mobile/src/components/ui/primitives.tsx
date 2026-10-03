@@ -1,7 +1,10 @@
-import { Pressable, Text as RNText, type TextProps as RNTextProps } from "react-native";
+import { Pressable, Text as RNText, View, type TextProps as RNTextProps } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { typography, variantColor, type Variant } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 interface AppTextProps extends RNTextProps {
   variant?: Variant;
@@ -33,12 +36,18 @@ interface ButtonProps {
   variant?: "primary" | "secondary" | "danger" | "ghost";
   disabled?: boolean;
   loading?: boolean;
+  /** Optional Ionicons glyph rendered before the label. */
+  icon?: IconName;
   style?: object;
 }
 
 /** Buttons follow the mockup: primary = purple→pink gradient pill, others tinted. */
-export function Button({ label, onPress, variant = "primary", disabled, loading, style }: ButtonProps) {
+export function Button({ label, onPress, variant = "primary", disabled, loading, icon, style }: ButtonProps) {
   const { colors, gradients, radii } = useTheme();
+
+  const iconNode = icon ? (
+    <Ionicons name={icon} size={17} color={variant === "primary" ? colors.onPrimary : variant === "danger" ? "#FFFFFF" : variant === "ghost" ? colors.primary : colors.text} />
+  ) : null;
 
   const content = (
     <>
@@ -49,22 +58,28 @@ export function Button({ label, onPress, variant = "primary", disabled, loading,
           end={{ x: 1, y: 1 }}
           style={{ ...buttonBase, borderRadius: radii.full, ...(style as object) }}
         >
-          <RNText style={{ color: colors.onPrimary, fontSize: 16, fontWeight: "700" }}>
-            {loading ? "Please wait…" : label}
-          </RNText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {iconNode}
+            <RNText style={{ color: colors.onPrimary, fontSize: 16, fontWeight: "700" }}>
+              {loading ? "Please wait…" : label}
+            </RNText>
+          </View>
         </LinearGradient>
       ) : null}
       {variant !== "primary" ? (
-        <RNText
-          style={{
-            ...(variant === "secondary" ? { color: colors.text, fontWeight: "600" } : {}),
-            ...(variant === "danger" ? { color: "#FFFFFF", fontWeight: "700" } : {}),
-            ...(variant === "ghost" ? { color: colors.primary, fontWeight: "600" } : {}),
-            fontSize: 16,
-          }}
-        >
-          {loading ? "Please wait…" : label}
-        </RNText>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {iconNode}
+          <RNText
+            style={{
+              ...(variant === "secondary" ? { color: colors.text, fontWeight: "600" } : {}),
+              ...(variant === "danger" ? { color: "#FFFFFF", fontWeight: "700" } : {}),
+              ...(variant === "ghost" ? { color: colors.primary, fontWeight: "600" } : {}),
+              fontSize: 16,
+            }}
+          >
+            {loading ? "Please wait…" : label}
+          </RNText>
+        </View>
       ) : null}
     </>
   );

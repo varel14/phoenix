@@ -4,6 +4,7 @@ import { followRepository } from "../repositories/follow.repository.js";
 import { songRepository } from "../repositories/song.repository.js";
 import { videoRepository } from "../repositories/video.repository.js";
 import { AppError } from "../lib/errors.js";
+import { deleteStoredObject } from "../lib/object-storage.js";
 import { pruneUndefined } from "../lib/prune.js";
 import { buildPagination, type PaginationMeta } from "../lib/responses.js";
 import type { SongWithArtist } from "../types/media.js";
@@ -13,10 +14,35 @@ import type { CreateSongBody, UpdateSongBody } from "../validators/song.schema.j
 import type { CreateVideoBody, UpdateVideoBody } from "../validators/video.schema.js";
 
 export interface ArtistStats {
+  /** Total song plays (legacy field). */
   plays: number;
+  /** Total video views (legacy field). */
   views: number;
+  /** Song + video downloads (legacy field). */
   downloads: number;
+  /** Follower count (legacy field). */
   subscribers: number;
+  /** Songs + videos added to favorites. */
+  favorites: number;
+  /** Number of published songs. */
+  songs: number;
+  /** Number of published videos. */
+  videos: number;
+  topSongs: Array<{
+    id: string;
+    title: string;
+    playCount: number;
+    downloadCount: number;
+    favorites: number;
+  }>;
+  topVideos: Array<{
+    id: string;
+    title: string;
+    viewCount: number;
+    downloadCount: number;
+  }>;
+  /** One entry per day for the last 30 days (inclusive of today). */
+  daily: Array<{ date: string; plays: number; views: number }>;
 }
 
 /** Ensures the artist exists AND belongs to the acting user. */
@@ -84,6 +110,8 @@ export const artistService = {
     const song = await songRepository.findByIdForArtist(songId);
     if (!song || song.artistId !== artistId) throw AppError.notFound("Song");
     await songRepository.remove(songId);
+    // Best-effort storage cleanup; the catalog row is already gone.
+    if (song.storageKey) await deleteStoredObject(song.storageKey);
   },
 
   async publishVideo(artistId: string, userId: string, body: CreateVideoBody): Promise<VideoWithArtist> {
@@ -103,6 +131,7 @@ export const artistService = {
     const video = await videoRepository.findByIdRef(videoId);
     if (!video || video.artistId !== artistId) throw AppError.notFound("Video");
     await videoRepository.remove(videoId);
+    if (video.storageKey) await deleteStoredObject(video.storageKey);
   },
 
   // -- Catalog listings ------------------------------------------------------

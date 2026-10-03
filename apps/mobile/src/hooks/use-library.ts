@@ -4,6 +4,25 @@ import { favoritesApi, playlistsApi } from "@/services/api/library-api";
 import { queryKeys } from "@/constants/query-keys";
 import type { MediaType } from "@/types/api";
 
+/** Refreshes every cached list/stats query that can show the artist's media. */
+export function invalidateStudioQueries(
+  artistId: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+  kind: "SONG" | "VIDEO" | "BOTH" = "BOTH",
+) {
+  if (kind === "SONG" || kind === "BOTH") {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.artistSongs(artistId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.songs() });
+  }
+  if (kind === "VIDEO" || kind === "BOTH") {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.artistVideos(artistId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.videos() });
+  }
+  void queryClient.invalidateQueries({ queryKey: queryKeys.artistStats(artistId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.artists() });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.artist(artistId) });
+}
+
 export function usePlaylists() {
   return useQuery({ queryKey: queryKeys.playlists(), queryFn: () => playlistsApi.list() });
 }

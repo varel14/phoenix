@@ -1,5 +1,5 @@
 /**
- * Central HTTP client for the Phoenix API. Screens never call fetch
+ * Central HTTP client for the Chuyassi Emmanuel CE API. Screens never call fetch
  * directly — everything goes through here (or the auth client, which
  * routes through the same wrapper).
  *
@@ -98,7 +98,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       signal: controller.signal,
     });
   } catch (error) {
-    throw new ApiError(0, "NETWORK_ERROR", "Cannot reach the Phoenix server. Check your connection.");
+    throw new ApiError(0, "NETWORK_ERROR", "Cannot reach the server. Check your connection.");
   } finally {
     clearTimeout(timeout);
   }

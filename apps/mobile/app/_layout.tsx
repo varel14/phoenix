@@ -9,6 +9,9 @@ import { ThemeProvider, useTheme } from "@/theme/theme-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import { useDownloadsStore } from "@/services/downloads/download-manager";
 import { useEventSync } from "@/hooks/use-event-sync";
+import { useRealtime } from "@/hooks/use-realtime";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { CallOverlay } from "@/components/calls/call-overlay";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -29,6 +32,8 @@ export default function RootLayout() {
   const networkState = useNetworkState();
 
   useEventSync();
+  useRealtime();
+  usePushNotifications();
 
   // Keep react-query's online state aligned with expo-network.
   useEffect(() => {
@@ -61,6 +66,7 @@ function RootNavigator() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
         </Stack>
+        <CallOverlay />
       </SafeAreaProvider>
     </QueryClientProvider>
   );

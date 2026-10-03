@@ -23,30 +23,38 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1144.0",
+    "@aws-sdk/lib-storage": "^3.1144.0",
+    "@aws-sdk/s3-request-presigner": "^3.1144.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "better-auth": "^1.7.5",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "expo-server-sdk": "^7.2.0",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "morgan": "^1.12.1",
+    "multer": "^2.4.0",
     "pg": "^8.23.0",
+    "socket.io": "^4.8.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.2.0",
     "@types/node": "26.4.1",
     "@types/pg": "^8.18.0",
     "@types/supertest": "^6.0.3",
     "eslint": "^10.9.1",
     "prisma": "^7.10.0",
+    "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1",
-    "@repo/eslint-config": "workspace:*"
+    "vitest": "^5.0.1"
   }
 }

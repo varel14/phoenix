@@ -74,16 +74,76 @@ export const artistRepository = {
   },
 
   async stats(id: string) {
-    const [songAgg, videoAgg, followers] = await Promise.all([
-      prisma.song.aggregate({ where: { artistId: id }, _sum: { playCount: true, downloadCount: true } }),
-      prisma.video.aggregate({ where: { artistId: id }, _sum: { viewCount: true, downloadCount: true } }),
-      prisma.artistFollow.count({ where: { artistId: id } }),
-    ]);
+    const [songAgg, videoAgg, followers, songFavorites, videoFavorites, songCount, videoCount, topSongs, topVideos, daily] =
+      await Promise.all([
+        prisma.song.aggregate({ where: { artistId: id }, _sum: { playCount: true, downloadCount: true } }),
+        prisma.video.aggregate({ where: { artistId: id }, _sum: { viewCount: true, downloadCount: true } }),
+        prisma.artistFollow.count({ where: { artistId: id } }),
+        prisma.favorite.count({ where: { song: { artistId: id } } }),
+        prisma.favorite.count({ where: { video: { artistId: id } } }),
+        prisma.song.count({ where: { artistId: id } }),
+        prisma.video.count({ where: { artistId: id } }),
+        prisma.song.findMany({
+          where: { artistId: id },
+          orderBy: [{ playCount: "desc" }, { publishedAt: "desc" }],
+          take: 10,
+          select: {
+            id: true,
+            title: true,
+            playCount: true,
+            downloadCount: true,
+            _count: { select: { favorites: true } },
+          },
+        }),
+        prisma.video.findMany({
+          where: { artistId: id },
+          orderBy: [{ viewCount: "desc" }, { publishedAt: "desc" }],
+          take: 5,
+          select: { id: true, title: true, viewCount: true, downloadCount: true },
+        }),
+        prisma.$queryRaw<Array<{ date: string; plays: number; views: number }>>`
+          SELECT
+            to_char(d, 'YYYY-MM-DD') AS date,
+            CAST(COUNT(pe.id) FILTER (
+              WHERE pe.event_type = 'PLAY' AND (s.id IS NOT NULL OR v.id IS NOT NULL)
+            ) AS int) AS plays,
+            CAST(COUNT(pe.id) FILTER (
+              WHERE pe.event_type = 'VIEW' AND (s.id IS NOT NULL OR v.id IS NOT NULL)
+            ) AS int) AS views
+          FROM generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, INTERVAL '1 day') AS d
+          LEFT JOIN playback_events pe
+            ON pe."occurredAt" >= d AND pe."occurredAt" < d + INTERVAL '1 day'
+          LEFT JOIN songs s ON s.id = pe.song_id AND s.artist_id = ${id}
+          LEFT JOIN videos v ON v.id = pe.video_id AND v.artist_id = ${id}
+          GROUP BY d
+          ORDER BY d
+        `,
+      ]);
     return {
+      // Legacy totals (kept stable for existing clients)
       plays: songAgg._sum.playCount ?? 0,
       views: videoAgg._sum.viewCount ?? 0,
       downloads: (songAgg._sum.downloadCount ?? 0) + (videoAgg._sum.downloadCount ?? 0),
       subscribers: followers,
+      // Extended totals
+      favorites: songFavorites + videoFavorites,
+      songs: songCount,
+      videos: videoCount,
+      // Breakdowns & trends
+      topSongs: topSongs.map((song) => ({
+        id: song.id,
+        title: song.title,
+        playCount: song.playCount,
+        downloadCount: song.downloadCount,
+        favorites: song._count.favorites,
+      })),
+      topVideos: topVideos.map((video) => ({
+        id: video.id,
+        title: video.title,
+        viewCount: video.viewCount,
+        downloadCount: video.downloadCount,
+      })),
+      daily: daily.map((row) => ({ date: row.date, plays: Number(row.plays), views: Number(row.views) })),
     };
   },
 

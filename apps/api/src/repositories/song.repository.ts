@@ -58,8 +58,8 @@ export const songRepository = {
     return prisma.song.findUnique({ where: { id }, include: songInclude });
   },
 
-  async findByIdForArtist(id: string): Promise<{ id: string; artistId: string } | null> {
-    return prisma.song.findUnique({ where: { id }, select: { id: true, artistId: true } });
+  async findByIdForArtist(id: string): Promise<{ id: string; artistId: string; storageKey: string | null } | null> {
+    return prisma.song.findUnique({ where: { id }, select: { id: true, artistId: true, storageKey: true } });
   },
 
   async create(artistId: string, data: Omit<Prisma.SongUncheckedCreateInput, "artistId">): Promise<SongWithArtist> {

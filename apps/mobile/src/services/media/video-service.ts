@@ -3,7 +3,7 @@ import { createVideoPlayer, type VideoPlayer, type VideoSource } from "expo-vide
 /**
  * Multi-player video architecture.
  *
- * Phoenix requires up to THREE simultaneous video players (e.g. a main
+ * Chuyassi Emmanuel CE requires up to THREE simultaneous video players (e.g. a main
  * player plus two muted previews). expo-video supports independent Player
  * instances; this module adds a small registry that:
  *   - caps the number of live players (MAX_PLAYERS = 3)

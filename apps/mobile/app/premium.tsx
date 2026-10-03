@@ -1,39 +1,128 @@
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { AppText, Button, IconButton } from "@/components/ui";
-
-type PlanId = "MONTHLY" | "YEARLY";
-
-const PLANS: Array<{
-  id: PlanId;
-  name: string;
-  price: string;
-  period: string;
-  note: string;
-}> = [
-  { id: "MONTHLY", name: "Mensuel", price: "2 500 FCFA", period: "/ mois", note: "Sans engagement" },
-  { id: "YEARLY", name: "Annuel", price: "25 000 FCFA", period: "/ an", note: "2 mois offerts" },
-];
+import { subscriptionsApi } from "@/services/api/subscriptions-api";
+import { queryKeys } from "@/constants/query-keys";
+import { useAuthStore } from "@/stores/auth-store";
+import { ApiError } from "@/services/api/api-client";
 
 const FEATURES: Array<{ icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; description: string }> = [
-  { icon: "musical-notes", title: "Musique sans limites", description: "Écoutez tous vos titres sans publicité, même hors ligne." },
-  { icon: "download", title: "Téléchargements illimités", description: "Gardez votre musique et vos vidéos partout, même sans réseau." },
-  { icon: "play-circle", title: "Vidéos exclusives", description: "Clips, concerts et contenus Premium en haute qualité." },
-  { icon: "color-palette", title: "Thèmes exclusifs", description: "Personnalisez votre application avec des thèmes réservés aux membres." },
+  {
+    icon: "person-circle",
+    title: "Accès à la page de l'artiste",
+    description: "Soutenez Chuyassi Emmanuel en vous abonnant à sa page pour seulement 2 500 FCFA par mois.",
+  },
+  {
+    icon: "download",
+    title: "Musiques téléchargeables",
+    description: "Téléchargez les titres et gardez-les sur votre téléphone.",
+  },
+  {
+    icon: "cloud-offline",
+    title: "Lecture hors connexion",
+    description: "Écoutez vos musiques téléchargées partout, même sans réseau.",
+  },
+  {
+    icon: "heart",
+    title: "1 FCFA/mois reversés à l'artiste",
+    description:
+      "Chaque musique téléchargée coûte 1 FCFA par mois, versés à l'artiste sous couvert de votre abonnement à sa page.",
+  },
 ];
 
-/** Mockup "Abonnements" screen — presentational Premium pitch (no payment backend). */
+function formatAmount(amount: number, currency: string): string {
+  const label = currency === "XOF" ? "FCFA" : currency;
+  return `${amount.toLocaleString("fr-FR")} ${label}`;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** "Abonnements" screen — page subscription at 2 500 FCFA/month. */
 export default function PremiumScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, gradients } = useTheme();
-  const [selected, setSelected] = useState<PlanId>("YEARLY");
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const [subscribing, setSubscribing] = useState(false);
+
+  const statusQuery = useQuery({
+    queryKey: queryKeys.subscription(),
+    queryFn: () => subscriptionsApi.getStatus(),
+    enabled: !!user,
+    retry: false,
+  });
+
+  const subscribeMutation = useMutation({
+    mutationFn: () => subscriptionsApi.subscribe(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.subscription() });
+      Alert.alert(
+        "Abonnement activé",
+        "Bienvenue ! Vous êtes abonné à la page de l'artiste pour 2 500 FCFA par mois. Chaque musique téléchargée reversera 1 FCFA par mois à l'artiste.",
+      );
+    },
+    onError: (error) => {
+      Alert.alert(
+        "Échec de l'abonnement",
+        error instanceof ApiError && error.status !== 0
+          ? error.message
+          : "Impossible de contacter le serveur. Vérifiez votre connexion.",
+      );
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => subscriptionsApi.cancel(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.subscription() });
+      Alert.alert("Abonnement annulé", "Vous ne serez plus prélevé. Vos musiques téléchargées resteront lisibles hors connexion.");
+    },
+    onError: () => {
+      Alert.alert("Échec", "Impossible d'annuler l'abonnement pour le moment.");
+    },
+  });
+
+  const handleSubscribe = () => {
+    if (!user) {
+      Alert.alert("Connexion requise", "Connectez-vous pour vous abonner à la page de l'artiste.", [
+        { text: "Plus tard", style: "cancel" },
+        { text: "Se connecter", onPress: () => router.push("/(auth)/login") },
+      ]);
+      return;
+    }
+    setSubscribing(true);
+    subscribeMutation.mutate(undefined, { onSettled: () => setSubscribing(false) });
+  };
+
+  const handleCancel = () => {
+    Alert.alert(
+      "Annuler l'abonnement",
+      `Votre abonnement à la page de l'artiste (${formatAmount(
+        statusQuery.data?.pricing.monthlyPrice ?? 2500,
+        statusQuery.data?.pricing.currency ?? "XOF",
+      )}/mois) prendra fin immédiatement. Confirmer ?`,
+      [
+        { text: "Garder mon abonnement", style: "cancel" },
+        { text: "Annuler l'abonnement", style: "destructive", onPress: () => cancelMutation.mutate() },
+      ],
+    );
+  };
+
+  const status = statusQuery.data;
+  const subscription = status?.subscription;
+  const isActive = !!subscription && subscription.status === "ACTIVE";
+  const monthlyPrice = formatAmount(status?.pricing.monthlyPrice ?? 2500, status?.pricing.currency ?? "XOF");
+  const royalty = status?.pricing.downloadRoyalty ?? 1;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
@@ -55,62 +144,111 @@ export default function PremiumScreen() {
         >
           <Ionicons name="star" size={36} color="#FFFFFF" />
           <AppText variant="title" color="#FFFFFF">
-            Phoenix Premium
+            Chuyassi Emmanuel CE
           </AppText>
           <AppText color="rgba(255,255,255,0.9)" style={{ fontSize: 15 }}>
-            Tout votre univers, sans limites. Musique, vidéos et téléchargements hors ligne.
+            Abonnez-vous à la page de l'artiste, téléchargez ses musiques et écoutez-les hors connexion.
           </AppText>
         </LinearGradient>
 
-        {/* Plan cards */}
-        <View style={{ gap: spacing.md }}>
-          {PLANS.map((plan) => {
-            const active = selected === plan.id;
-            return (
-              <Pressable
-                key={plan.id}
-                accessibilityRole="button"
-                onPress={() => setSelected(plan.id)}
-                style={{
-                  borderRadius: radii.lg,
-                  borderWidth: 2,
-                  borderColor: active ? colors.gold : colors.border,
-                  backgroundColor: colors.surface,
-                  padding: spacing.lg,
-                  gap: spacing.xs,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Ionicons
-                    name={active ? "radio-button-on" : "radio-button-off"}
-                    size={20}
-                    color={active ? colors.gold : colors.textFaint}
-                  />
-                  <AppText variant="subheading">{plan.name}</AppText>
-                  {plan.id === "YEARLY" ? (
-                    <View
-                      style={{
-                        backgroundColor: colors.gold,
-                        borderRadius: radii.full,
-                        paddingHorizontal: spacing.sm,
-                        paddingVertical: 2,
-                      }}
-                    >
-                      <AppText style={{ color: "#201500", fontSize: 10, fontWeight: "800" }}>POPULAIRE</AppText>
-                    </View>
-                  ) : null}
+        {/* Active subscription card */}
+        {isActive && subscription ? (
+          <View style={{ gap: spacing.md }}>
+            <View
+              style={{
+                borderRadius: radii.lg,
+                borderWidth: 2,
+                borderColor: colors.gold,
+                backgroundColor: colors.surface,
+                padding: spacing.lg,
+                gap: spacing.xs,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Ionicons name="checkmark-circle" size={20} color={colors.gold} />
+                <AppText variant="subheading">Abonnement actif</AppText>
+              </View>
+              <AppText variant="heading" color={colors.gold}>
+                {monthlyPrice}
+                <AppText variant="caption"> / mois</AppText>
+              </AppText>
+              <AppText variant="small">Renouvellement le {formatDate(subscription.currentPeriodEnd)}</AppText>
+              {subscription.artist ? <AppText variant="small">Page de {subscription.artist.name}</AppText> : null}
+            </View>
+
+            <View
+              style={{
+                borderRadius: radii.lg,
+                backgroundColor: colors.surface,
+                padding: spacing.lg,
+                gap: spacing.sm,
+              }}
+            >
+              <AppText variant="subheading">Redevance musiques téléchargées</AppText>
+              <AppText variant="bodyMuted">
+                {royalty} FCFA par mois et par musique téléchargée, reversés à l'artiste sous couvert de votre abonnement.
+              </AppText>
+              <View style={{ flexDirection: "row", gap: spacing.xl }}>
+                <View style={{ gap: 2 }}>
+                  <AppText variant="heading">{status?.usage.downloadedTracks ?? 0}</AppText>
+                  <AppText variant="caption">Musique(s) téléchargée(s)</AppText>
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
-                  <AppText variant="heading" color={active ? colors.gold : colors.text}>
-                    {plan.price}
-                  </AppText>
-                  <AppText variant="caption">{plan.period}</AppText>
+                <View style={{ gap: 2 }}>
+                  <AppText variant="heading">{status?.usage.royaltyDueThisMonth ?? 0} F</AppText>
+                  <AppText variant="caption">Dû ce mois-ci</AppText>
                 </View>
-                <AppText variant="small">{plan.note}</AppText>
-              </Pressable>
-            );
-          })}
-        </View>
+                <View style={{ gap: 2 }}>
+                  <AppText variant="heading">{status?.usage.royaltyTotal ?? 0} F</AppText>
+                  <AppText variant="caption">Total versé</AppText>
+                </View>
+              </View>
+            </View>
+
+            <Button
+              label="Se désabonner"
+              variant="secondary"
+              onPress={handleCancel}
+              disabled={cancelMutation.isPending}
+              loading={cancelMutation.isPending}
+            />
+          </View>
+        ) : (
+          /* Plan card */
+          <View style={{ gap: spacing.md }}>
+            <View
+              style={{
+                borderRadius: radii.lg,
+                borderWidth: 2,
+                borderColor: colors.gold,
+                backgroundColor: colors.surface,
+                padding: spacing.lg,
+                gap: spacing.xs,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Ionicons name="radio-button-on" size={20} color={colors.gold} />
+                <AppText variant="subheading">Abonnement mensuel</AppText>
+                <View
+                  style={{
+                    backgroundColor: colors.gold,
+                    borderRadius: radii.full,
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: 2,
+                  }}
+                >
+                  <AppText style={{ color: "#201500", fontSize: 10, fontWeight: "800" }}>SANS ENGAGEMENT</AppText>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
+                <AppText variant="heading" color={colors.gold}>
+                  {monthlyPrice}
+                </AppText>
+                <AppText variant="caption">/ mois</AppText>
+              </View>
+              <AppText variant="small">Accès à la page de l'artiste, téléchargements et lecture hors connexion.</AppText>
+            </View>
+          </View>
+        )}
 
         {/* Feature list */}
         <View style={{ gap: spacing.lg }}>
@@ -136,9 +274,18 @@ export default function PremiumScreen() {
           ))}
         </View>
 
-        <Button label="S'abonner" onPress={() => {}} />
+        {isActive ? null : (
+          <Button
+            label={`S'abonner — ${monthlyPrice}/mois`}
+            onPress={handleSubscribe}
+            disabled={subscribing}
+            loading={subscribing}
+          />
+        )}
+
         <AppText variant="small" align="center">
-          Annulable à tout moment. Paiement Mobile Money à venir.
+          {royalty} FCFA par mois et par musique téléchargée, reversés à l'artiste. Lecture hors connexion incluse pour
+          les musiques téléchargées. Annulable à tout moment.
         </AppText>
       </ScrollView>
     </View>

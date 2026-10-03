@@ -17,13 +17,15 @@ interface InteractiveRowProps {
   onAddToPlaylist?: (song: Song) => void;
   /** Extra actions surfaced in the ⋮ menu (after favorite, before "View artist"). */
   menuActions?: MenuAction[];
+  /** Replaces the default "artist · duration · plays" subtitle (e.g. studio analytics). */
+  subtitleOverride?: string;
 }
 
 /**
  * MediaRow wired with favorite toggle, download action and progress.
  * Every list screen uses this so behavior is consistent app-wide.
  */
-export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPlaylist, menuActions }: InteractiveRowProps) {
+export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPlaylist, menuActions, subtitleOverride }: InteractiveRowProps) {
   const toggleFavorite = useToggleFavorite();
   const downloadState = useDownloadsStore((state) => selectDownloadState(state, mediaType, media.id));
   const isDownloaded = useDownloadsStore((state) =>
@@ -44,9 +46,8 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
         onPlay={onPlay}
         onToggleFavorite={() => toggleFavorite.mutate({ mediaType, mediaId: media.id, favorite: !isFavorite })}
         subtitleOverride={
-          mediaType === "SONG" && isDownloaded
-            ? `${media.artist.name} · available offline`
-            : undefined
+          subtitleOverride ??
+          (mediaType === "SONG" && isDownloaded ? `${media.artist.name} · available offline` : undefined)
         }
         menuActions={
           downloadable

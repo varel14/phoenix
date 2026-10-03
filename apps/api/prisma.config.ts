@@ -9,5 +9,9 @@ export default defineConfig({
   },
   datasource: {
     url: env("DATABASE_URL"),
+    // Used by `prisma migrate diff` for schema diffs; never set in production.
+    ...(process.env["SHADOW_DATABASE_URL"]
+      ? { shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"] }
+      : {}),
   },
 });

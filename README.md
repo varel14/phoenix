@@ -1,6 +1,14 @@
-# Phoenix
+# Chuyassi Emmanuel CE
 
 Music & video streaming platform — React Native (Expo) mobile app with an Express REST API, built as a Turborepo monorepo.
+
+## Business model
+
+- **Page subscription — 2 500 FCFA/month.** Users subscribe to the artist's page to unlock the app.
+- **Download royalty — 1 FCFA/month per downloaded track**, paid to the artist under the cover of the page subscription (accrued server-side in `download_royalties`, idempotent per month).
+- **Offline playback.** Downloaded tracks are stored on-device and played back without a network connection; downloading requires an active subscription (403 `SUBSCRIPTION_REQUIRED` otherwise).
+
+Key endpoints: `POST /api/v1/subscriptions` (subscribe/renew), `GET /api/v1/subscriptions/me`, `DELETE /api/v1/subscriptions/me`, `GET /api/v1/subscriptions/royalties/mine`, `GET /api/v1/subscriptions/royalties/earnings` (artist).
 
 ## Structure
 

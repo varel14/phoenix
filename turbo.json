@@ -1,7 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["DATABASE_URL", "DATABASE_URL_TEST", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "PORT", "CORS_ORIGIN", "NODE_ENV"],
+  "globalEnv": ["DATABASE_URL", "DATABASE_URL_TEST", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "PORT", "CORS_ORIGIN", "NODE_ENV", "THUMBNAILS_DIR", "UPLOADS_DIR", "DIGITAL_FILES_DIR", "PAYMENT_PROVIDER", "PAYMENT_WEBHOOK_SECRET", "MAX_UPLOAD_MB"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -6,6 +6,8 @@ declare global {
       user?: AuthenticatedUser;
       /** Parsed + validated request data, set by the validate() middleware. */
       validated?: ValidatedData;
+      /** Upload kind for /uploads requests ("voice" | "image" | "digital"). */
+      uploadKind?: string;
     }
   }
 }

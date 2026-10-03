@@ -48,6 +48,24 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="messages"
+          options={{
+            title: "Messages",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={22} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="boutique"
+          options={{
+            title: "Boutique",
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "bag" : "bag-outline"} size={22} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="explore"
           options={{
             title: "Artistes",

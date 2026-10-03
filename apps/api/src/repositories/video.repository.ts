@@ -57,8 +57,8 @@ export const videoRepository = {
     return prisma.video.findUnique({ where: { id }, include: videoInclude });
   },
 
-  async findByIdRef(id: string): Promise<Pick<Video, "id" | "artistId"> | null> {
-    return prisma.video.findUnique({ where: { id }, select: { id: true, artistId: true } });
+  async findByIdRef(id: string): Promise<Pick<Video, "id" | "artistId" | "storageKey"> | null> {
+    return prisma.video.findUnique({ where: { id }, select: { id: true, artistId: true, storageKey: true } });
   },
 
   async create(artistId: string, data: Omit<Prisma.VideoUncheckedCreateInput, "artistId">): Promise<VideoWithArtist> {
