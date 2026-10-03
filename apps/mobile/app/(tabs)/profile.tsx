@@ -15,6 +15,7 @@ import { AppText, LoadingView } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
 import { BecomeArtistModal } from "@/components/profile/become-artist-modal";
 import { formatCount } from "@/utils/format";
+import { formatMoney } from "@/utils/money";
 import type { ArtistStats } from "@/types/api";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -121,7 +122,10 @@ export default function ProfileScreen() {
             <AppText variant="caption">
               {subscriptionActive
                 ? "Abonnement actif — musiques téléchargées hors connexion"
-                : "Abonnement — 2 500 FCFA/mois, téléchargements hors connexion"}
+                : `Abonnement — ${formatMoney(
+                    subscriptionQuery.data?.pricing.monthlyPrice ?? 2500,
+                    subscriptionQuery.data?.pricing.currency,
+                  )}/mois, téléchargements hors connexion`}
             </AppText>
           </View>
           {subscriptionActive ? (

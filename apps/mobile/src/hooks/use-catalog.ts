@@ -20,8 +20,12 @@ export function useSongSearch(query: string, enabled: boolean) {
   });
 }
 
-export function useSong(id: string) {
-  return useQuery({ queryKey: queryKeys.song(id), queryFn: () => songsApi.getById(id) });
+export function useSong(id: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.song(id),
+    queryFn: () => songsApi.getById(id),
+    enabled: options.enabled ?? id.length > 0,
+  });
 }
 
 export function useVideos(params: VideoListParams = {}) {

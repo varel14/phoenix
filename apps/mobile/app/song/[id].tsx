@@ -11,7 +11,7 @@ import { selectCurrentSong, usePlayerStore } from "@/stores/player-store";
 import { AppText, ErrorView, IconButton, LoadingView } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
 import { InteractiveRow } from "@/components/media/rows";
-import { useFavoriteIds, useToggleFavorite } from "@/hooks/use-catalog";
+import { useFavoriteIds, useSong, useToggleFavorite } from "@/hooks/use-catalog";
 import type { Song } from "@/types/api";
 
 export default function NowPlayingScreen() {
@@ -31,14 +31,34 @@ export default function NowPlayingScreen() {
   const { ids: favoriteIds } = useFavoriteIds();
   const toggleFavorite = useToggleFavorite();
 
-  // Deep link: a song screen opened without the player running it.
-  const displayed: Song | null = song ?? null;
-  void params;
+  // The route always carries an id (the mini-player pushes the playing song's
+  // id). Skip the fetch when the player already holds that exact song — its
+  // copy is fresher (live playback state) — and hit GET /songs/:id otherwise,
+  // so a deep link renders the song without a running queue.
+  const routeId = typeof params.id === "string" ? params.id : undefined;
+  const isViewingPlayerSong = !!song && (!routeId || song.id === routeId);
+  const songQuery = useSong(routeId ?? "", { enabled: !!routeId && !isViewingPlayerSong });
+
+  const displayed: Song | null = song ?? songQuery.data ?? null;
 
   if (!displayed) {
+    if (songQuery.isLoading) {
+      return <LoadingView label="Chargement…" />;
+    }
+    if (songQuery.isError) {
+      return (
+        <ErrorView
+          message="Impossible de charger ce titre."
+          onRetry={() => {
+            void songQuery.refetch();
+          }}
+        />
+      );
+    }
     return <ErrorView message="Nothing is playing right now." onRetry={() => router.back()} />;
   }
 
+  const isLive = isViewingPlayerSong;
   const isFavorite = favoriteIds.has(displayed.id);
 
   return (
@@ -52,7 +72,7 @@ export default function NowPlayingScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
         <IconButton icon="chevron-down" size={26} onPress={() => router.back()} accessibilityLabel="Close player" />
         <AppText variant="caption" color={colors.onGradientMuted} style={{ flex: 1, textAlign: "center", letterSpacing: 2 }}>
-          {isOffline ? "LECTURE HORS LIGNE" : "EN LECTURE"}
+          {isOffline ? "LECTURE HORS LIGNE" : isLive ? "EN LECTURE" : "APERÇU"}
         </AppText>
         <IconButton
           icon={isFavorite ? "heart" : "heart-outline"}
@@ -76,19 +96,27 @@ export default function NowPlayingScreen() {
         </View>
 
         <View style={{ paddingHorizontal: spacing.xl, gap: spacing.md }}>
-          <SeekBar currentTime={currentTime} duration={duration} onSeek={(seconds) => playerService.seek(seconds)} />
+          {isLive ? (
+            <SeekBar currentTime={currentTime} duration={duration} onSeek={(seconds) => playerService.seek(seconds)} />
+          ) : (
+            <View style={{ flexDirection: "row", justifyContent: "center" }}>
+              <AppText variant="small">{formatDuration(displayed.durationSec ?? 0)}</AppText>
+            </View>
+          )}
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xl }}>
-            <IconButton
-              icon="play-skip-back"
-              size={28}
-              onPress={() => playerService.previous()}
-              accessibilityLabel="Previous"
-            />
+            {isLive ? (
+              <IconButton
+                icon="play-skip-back"
+                size={28}
+                onPress={() => playerService.previous()}
+                accessibilityLabel="Previous"
+              />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isPlaying ? "Pause" : "Play"}
-              onPress={() => playerService.togglePlay()}
+              onPress={() => (isLive ? playerService.togglePlay() : void playerService.playSingle(displayed))}
               style={{ opacity: status === "loading" ? 0.6 : 1 }}
             >
               <LinearGradient
@@ -106,12 +134,14 @@ export default function NowPlayingScreen() {
                 <Ionicons name={isPlaying ? "pause" : "play"} size={30} color="#FFFFFF" />
               </LinearGradient>
             </Pressable>
-            <IconButton
-              icon="play-skip-forward"
-              size={28}
-              onPress={() => playerService.next()}
-              accessibilityLabel="Next"
-            />
+            {isLive ? (
+              <IconButton
+                icon="play-skip-forward"
+                size={28}
+                onPress={() => playerService.next()}
+                accessibilityLabel="Next"
+              />
+            ) : null}
           </View>
 
           {status === "loading" ? <LoadingView label="Buffering…" /> : null}
