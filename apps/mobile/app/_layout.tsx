@@ -25,7 +25,17 @@ const queryClient = new QueryClient({
   },
 });
 
+// The provider must sit above every hook that touches the query cache,
+// including useRealtime in AppBootstrap below.
 export default function RootLayout() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppBootstrap />
+    </QueryClientProvider>
+  );
+}
+
+function AppBootstrap() {
   const isReady = useAuthStore((state) => state.isReady);
   const restore = useAuthStore((state) => state.restore);
   const hydrateDownloads = useDownloadsStore((state) => state.hydrate);
