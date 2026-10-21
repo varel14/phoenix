@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { layout, radii, spacing } from "@/theme";
+import { layout, pickAmbient, ambientGradients, radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatDuration } from "@/utils/format";
 import { playerService } from "@/services/media/player-service";
@@ -60,13 +60,20 @@ export default function NowPlayingScreen() {
 
   const isLive = isViewingPlayerSong;
   const isFavorite = favoriteIds.has(displayed.id);
+  const ambient = ambientGradients[pickAmbient(displayed.id)];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+      {/* Ambient wash: a per-song hue melting into the true-black canvas. */}
       <LinearGradient
-        colors={gradients.brandDeep}
+        colors={ambient}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <LinearGradient
+        colors={["rgba(5, 5, 5, 0)", "rgba(5, 5, 5, 0.55)", "rgba(5, 5, 5, 0.92)"]}
+        locations={[0.35, 0.65, 1]}
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
       />
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
@@ -131,7 +138,7 @@ export default function NowPlayingScreen() {
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name={isPlaying ? "pause" : "play"} size={30} color="#FFFFFF" />
+                <Ionicons name={isPlaying ? "pause" : "play"} size={30} color={colors.onPrimary} />
               </LinearGradient>
             </Pressable>
             {isLive ? (

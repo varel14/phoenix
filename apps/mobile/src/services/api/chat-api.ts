@@ -34,7 +34,7 @@ export const conversationsApi = {
   async sendMessage(
     id: string,
     body: {
-      type?: "TEXT" | "VOICE";
+      type?: "TEXT" | "VOICE" | "IMAGE" | "VIDEO" | "FILE";
       content?: string;
       attachment?: {
         url: string;

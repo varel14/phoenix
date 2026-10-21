@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage as AsyncStorage } from "@/services/storage/mmkv";
 import { eventsApi, type QueuedEvent } from "@/services/api/library-api";
 import { useAuthStore } from "@/stores/auth-store";
 import { uuid } from "@/utils/uuid";

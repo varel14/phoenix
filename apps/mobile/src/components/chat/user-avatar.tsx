@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppText } from "@/components/ui";
@@ -14,14 +14,21 @@ interface UserAvatarProps {
 
 /** Contact avatar with deterministic gradient + initials fallback. */
 export function UserAvatar({ user, size = 48 }: UserAvatarProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const radius = size / 2;
 
   if (user.image) {
     return (
       <Image
         source={{ uri: user.image }}
-        style={{ width: size, height: size, borderRadius: radius }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          borderWidth: StyleSheet.hairlineWidth,
+          // Pure black/white outline (never tinted) so photo edges stay crisp on any surface.
+          borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+        }}
         contentFit="cover"
       />
     );

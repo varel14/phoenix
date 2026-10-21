@@ -21,14 +21,14 @@ export function formatFileSize(bytes: number | null | undefined): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-/** Brand-family gradient pairs (purple→pink rebrand) for artwork placeholders. */
+/** Brand-family gradient pairs (2026 violet rebrand) for artwork placeholders. */
 const GRADIENTS = [
-  { from: "#8E2DE2", to: "#FF2E93" },
-  { from: "#5B21B6", to: "#C026D3" },
-  { from: "#6D28D9", to: "#FF5E8A" },
-  { from: "#4C1D95", to: "#9D174D" },
-  { from: "#7C3AED", to: "#F472B6" },
-  { from: "#312E81", to: "#8E2DE2" },
+  { from: "#4517C9", to: "#A78BFA" },
+  { from: "#0F766E", to: "#5EEAD4" },
+  { from: "#6D28D9", to: "#C4B5FD" },
+  { from: "#BE123C", to: "#FDA4AF" },
+  { from: "#1D4ED8", to: "#93C5FD" },
+  { from: "#B45309", to: "#FDE047" },
 ];
 
 /** Deterministic gradient pair for artwork placeholders. */

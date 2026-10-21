@@ -57,7 +57,7 @@ export default function MessagesScreen() {
           marginHorizontal: spacing.lg,
           marginTop: spacing.md,
           backgroundColor: colors.surface,
-          borderRadius: radii.full,
+          borderRadius: radii.md,
           padding: 4,
         }}
       >
@@ -73,7 +73,7 @@ export default function MessagesScreen() {
             style={{
               flex: 1,
               height: 36,
-              borderRadius: radii.full,
+              borderRadius: radii.sm + 2,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: segment === value ? colors.primary : "transparent",

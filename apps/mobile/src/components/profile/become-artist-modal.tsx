@@ -72,11 +72,11 @@ export function BecomeArtistModal({ visible, onClose }: BecomeArtistModalProps) 
               end={{ x: 1, y: 1 }}
               style={{ borderRadius: radii.lg, padding: spacing.xl, gap: spacing.sm, alignItems: "flex-start" }}
             >
-              <Ionicons name="mic" size={32} color="#FFFFFF" />
-              <AppText variant="heading" color="#FFFFFF">
+              <Ionicons name="mic" size={32} color={colors.onPrimary} />
+              <AppText variant="heading" color={colors.onPrimary}>
                 Lancez votre carrière sur Chuyassi Emmanuel CE
               </AppText>
-              <AppText color="rgba(255,255,255,0.9)">
+              <AppText color="rgba(10,10,10,0.8)">
                 Créez votre profil artiste gratuitement et partagez votre univers avec la communauté.
               </AppText>
             </LinearGradient>

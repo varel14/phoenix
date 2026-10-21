@@ -110,6 +110,10 @@ export interface ArtistStats {
   favorites: number;
   songs: number;
   videos: number;
+  /** Distinct listeners across all songs (lifetime). */
+  uniqueListeners: number;
+  /** Money earned from paid song downloads (1 FCFA each), in XOF. */
+  downloadRevenue: number;
   topSongs: Array<{
     id: string;
     title: string;
@@ -124,6 +128,19 @@ export interface ArtistStats {
     downloadCount: number;
   }>;
   daily: Array<{ date: string; plays: number; views: number }>;
+  /** Every published song with its activity/popularity breakdown. */
+  songStats: Array<{
+    id: string;
+    title: string;
+    thumbnailUrl: string | null;
+    durationSec: number | null;
+    publishedAt: string;
+    playCount: number;
+    downloadCount: number;
+    favorites: number;
+    uniqueListeners: number;
+    plays30d: number;
+  }>;
 }
 
 export type MediaType = "SONG" | "VIDEO";

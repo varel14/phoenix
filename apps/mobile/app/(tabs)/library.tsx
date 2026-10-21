@@ -48,7 +48,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
       style={{
         paddingHorizontal: spacing.md,
         height: 34,
-        borderRadius: radii.full,
+        borderRadius: radii.md,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: active ? colors.primary : colors.primaryTint,

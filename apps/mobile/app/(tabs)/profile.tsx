@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Switch, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { radii, spacing } from "@/theme";
+import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme, useThemeModeStore, type ThemeMode } from "@/theme/theme-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import { usePreferencesStore, type AudioQuality } from "@/stores/preferences-store";
@@ -11,7 +12,7 @@ import { useFollowing, useMyArtist, useArtistStats } from "@/hooks/use-library";
 import { useQuery } from "@tanstack/react-query";
 import { subscriptionsApi } from "@/services/api/subscriptions-api";
 import { queryKeys } from "@/constants/query-keys";
-import { AppText, LoadingView } from "@/components/ui";
+import { AppText, Card, PressableScale } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
 import { BecomeArtistModal } from "@/components/profile/become-artist-modal";
 import { formatCount } from "@/utils/format";
@@ -34,7 +35,7 @@ const QUALITY_OPTIONS: Array<{ value: AudioQuality; label: string }> = [
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, gradients } = useTheme();
   const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
   const isSigningOut = useAuthStore((state) => state.isSigningOut);
@@ -67,92 +68,125 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 180, gap: spacing.xl }}>
-      {/* Identity header */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
-        <Artwork uri={user.image} seed={user.id} label={user.name} size={72} radius={36} />
-        <View style={{ flex: 1, gap: 6 }}>
-          <AppText variant="heading">{user.name}</AppText>
-          <AppText variant="bodyMuted">{user.email}</AppText>
+      {/* Identity hero on the brand gradient */}
+      <LinearGradient
+        colors={gradients.brand}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          borderRadius: radii.xl,
+          padding: spacing.xl,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.lg,
+        }}
+      >
+        <View
+          style={{
+            width: 92,
+            height: 92,
+            borderRadius: radii.full,
+            backgroundColor: "rgba(10, 10, 10, 0.85)",
+            padding: 3,
+          }}
+        >
+          <Artwork uri={user.image} seed={user.id} label={user.name} size={86} radius={radii.full} />
+        </View>
+        <View style={{ flex: 1, gap: 7 }}>
+          <AppText variant="heading" color={colors.onPrimary} numberOfLines={2} style={{ fontSize: 22 }}>
+            {user.name}
+          </AppText>
+          <AppText variant="caption" color="rgba(10, 10, 10, 0.72)" numberOfLines={1}>
+            {user.email}
+          </AppText>
           <View
             style={{
               alignSelf: "flex-start",
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
-              backgroundColor: isArtist ? colors.primaryTint : colors.surfaceHighlight,
+              backgroundColor: "rgba(10, 10, 10, 0.16)",
               borderRadius: radii.full,
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 3,
+              paddingHorizontal: spacing.sm + 2,
+              paddingVertical: 4,
+              marginTop: 2,
             }}
           >
-            <Ionicons name={isArtist ? "mic" : "headset-outline"} size={11} color={isArtist ? colors.primary : colors.textFaint} />
-            <AppText
-              variant="small"
-              style={{ color: isArtist ? colors.primary : colors.textFaint, letterSpacing: 1 }}
-            >
+            <Ionicons name={isArtist ? "mic" : "headset-outline"} size={11} color={colors.onPrimary} />
+            <AppText style={{ color: colors.onPrimary, fontSize: 10, fontWeight: "800", letterSpacing: 1.2 }}>
               {isArtist ? "COMPTE CRÉATEUR" : "AUDITEUR"}
             </AppText>
           </View>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* Premium entry */}
-      <Pressable
+      <PressableScale
         accessibilityRole="button"
         onPress={() => router.push("/premium")}
-        style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+        scaleTo={0.98}
+        style={{
+          borderRadius: radii.xl,
+          borderWidth: 1,
+          borderColor: withAlpha(colors.gold, 0.45),
+          backgroundColor: colors.surface,
+          padding: spacing.lg,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          boxShadow: `0 8px 24px ${withAlpha(colors.gold, 0.12)}`,
+        }}
       >
-        <View
-          style={{
-            borderRadius: radii.lg,
-            borderWidth: 1,
-            borderColor: colors.gold,
-            backgroundColor: colors.surface,
-            padding: spacing.lg,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-          }}
+        <LinearGradient
+          colors={gradients.premium}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ width: 44, height: 44, borderRadius: radii.md + 4, alignItems: "center", justifyContent: "center" }}
         >
-          <Ionicons name="star" size={24} color={colors.gold} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="subheading" color={colors.gold}>
-              Premium
-            </AppText>
-            <AppText variant="caption">
-              {subscriptionActive
-                ? "Abonnement actif — musiques téléchargées hors connexion"
-                : `Abonnement — ${formatMoney(
-                    subscriptionQuery.data?.pricing.monthlyPrice ?? 2500,
-                    subscriptionQuery.data?.pricing.currency,
-                  )}/mois, téléchargements hors connexion`}
-            </AppText>
-          </View>
-          {subscriptionActive ? (
-            <View
-              style={{
-                backgroundColor: colors.gold,
-                borderRadius: radii.full,
-                paddingHorizontal: spacing.sm,
-                paddingVertical: 3,
-              }}
-            >
-              <AppText style={{ color: "#201500", fontSize: 10, fontWeight: "800" }}>ACTIF</AppText>
-            </View>
-          ) : (
-            <Ionicons name="chevron-forward" size={18} color={colors.gold} />
-          )}
+          <Ionicons name="star" size={20} color="#FFFFFF" />
+        </LinearGradient>
+        <View style={{ flex: 1, gap: 1 }}>
+          <AppText variant="subheading" color={colors.gold}>
+            Premium
+          </AppText>
+          <AppText variant="caption" numberOfLines={2}>
+            {subscriptionActive
+              ? "Abonnement actif — musiques téléchargées hors connexion"
+              : `Dès ${formatMoney(
+                  subscriptionQuery.data?.pricing.monthlyPrice ?? 2500,
+                  subscriptionQuery.data?.pricing.currency,
+                )}/mois — téléchargements hors connexion`}
+          </AppText>
         </View>
-      </Pressable>
+        {subscriptionActive ? (
+          <LinearGradient
+            colors={gradients.premium}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 4 }}
+          >
+            <AppText style={{ color: "#201500", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>ACTIF</AppText>
+          </LinearGradient>
+        ) : (
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: radii.full,
+              backgroundColor: withAlpha(colors.gold, 0.14),
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="chevron-forward" size={16} color={colors.gold} />
+          </View>
+        )}
+      </PressableScale>
 
       {/* Preferences */}
-      <SectionCard title="Préférences">
-        <AppText variant="caption" style={{ marginBottom: spacing.sm }}>
-          APPARENCE
-        </AppText>
+      <Section label="Apparence & lecture">
         <AppearanceSegmented />
-        <Divider />
-
+        <RowDivider />
         <SettingsRow
           icon="musical-notes-outline"
           label="Qualité audio"
@@ -160,11 +194,11 @@ export default function ProfileScreen() {
           onPress={cycleAudioQuality}
           right={<RowValue>{qualityLabel}</RowValue>}
         />
-        <Divider />
-
+        <RowDivider />
         <SettingsRow
           icon="cloud-download-outline"
           label="Télécharger en Wi-Fi uniquement"
+          onPress={() => setWifiOnlyDownloads(!wifiOnlyDownloads)}
           right={
             <Switch
               value={wifiOnlyDownloads}
@@ -174,12 +208,12 @@ export default function ProfileScreen() {
             />
           }
         />
-        <Divider />
-
+        <RowDivider />
         <SettingsRow
           icon="notifications-outline"
           label="Notifications"
           sublabel="Nouveautés de vos artistes"
+          onPress={() => setPushNotifications(!pushNotifications)}
           right={
             <Switch
               value={pushNotifications}
@@ -189,10 +223,10 @@ export default function ProfileScreen() {
             />
           }
         />
-      </SectionCard>
+      </Section>
 
-      {/* Creator space — subtle row that opens the full-screen onboarding */}
-      <SectionCard title="Créateur">
+      {/* Creator space */}
+      <Section label="Créateur">
         {isArtist ? (
           <>
             <SettingsRow
@@ -203,7 +237,7 @@ export default function ProfileScreen() {
             />
             {myArtist.data ? (
               <>
-                <Divider />
+                <RowDivider />
                 <SettingsRow
                   icon="pencil-outline"
                   label="Modifier le profil artiste"
@@ -228,42 +262,31 @@ export default function ProfileScreen() {
             right={<RowValue chevron />}
           />
         )}
-      </SectionCard>
+      </Section>
 
       {/* Following */}
-      <View style={{ gap: spacing.sm }}>
-        <AppText variant="heading">Artistes suivis</AppText>
+      <Section label="Artistes suivis">
         {following.isLoading ? (
-          <LoadingView />
+          <ActivityIndicator color={colors.accent} style={{ paddingVertical: spacing.md }} />
         ) : (following.data?.data ?? []).length === 0 ? (
           <AppText variant="bodyMuted">Vous ne suivez aucun artiste pour le moment.</AppText>
         ) : (
-          <View style={{ gap: spacing.sm }}>
-            {(following.data?.data ?? []).map((follow) => (
-              <Pressable
-                key={follow.id}
-                accessibilityRole="button"
+          (following.data?.data ?? []).map((follow, index) => (
+            <View key={follow.id}>
+              <SettingsRow
+                avatar={<Artwork uri={follow.artist.avatarUrl} seed={follow.artist.id} label={follow.artist.name} size={40} radius={radii.full} />}
+                label={follow.artist.name}
                 onPress={() => router.push(`/artist/${follow.artist.id}`)}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.md,
-                  backgroundColor: colors.surface,
-                  borderRadius: radii.lg,
-                  padding: spacing.md,
-                  opacity: pressed ? 0.8 : 1,
-                })}
-              >
-                <Artwork uri={follow.artist.avatarUrl} seed={follow.artist.id} label={follow.artist.name} size={44} radius={22} />
-                <AppText variant="subheading">{follow.artist.name}</AppText>
-              </Pressable>
-            ))}
-          </View>
+                right={<RowValue chevron />}
+              />
+              {index < (following.data?.data.length ?? 0) - 1 ? <RowDivider /> : null}
+            </View>
+          ))
         )}
-      </View>
+      </Section>
 
       {/* Account */}
-      <SectionCard>
+      <Section>
         <SettingsRow
           icon="log-out-outline"
           label={isSigningOut ? "Déconnexion…" : "Se déconnecter"}
@@ -271,14 +294,23 @@ export default function ProfileScreen() {
           onPress={() => void signOut()}
           right={isSigningOut ? <ActivityIndicator color={colors.danger} /> : undefined}
         />
-      </SectionCard>
+      </Section>
 
-      <View style={{ alignItems: "center", gap: spacing.xs, paddingTop: spacing.sm }}>
-        <AppText variant="small" style={{ letterSpacing: 2 }}>
+      <View style={{ alignItems: "center", gap: spacing.sm, paddingTop: spacing.sm }}>
+        <LinearGradient
+          colors={gradients.brand}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons name="headset" size={20} color={colors.onPrimary} />
+        </LinearGradient>
+        <AppText variant="small" style={{ letterSpacing: 2, color: colors.textFaint }}>
           CHUYASSI EMMANUEL CE
         </AppText>
-        <View style={{ width: 40, height: 4, borderRadius: radii.full, backgroundColor: colors.accent }} />
-        <AppText variant="small">Version {Constants.expoConfig?.version ?? "1.0.0"}</AppText>
+        <AppText variant="small" style={{ color: colors.textFaint }}>
+          Version {Constants.expoConfig?.version ?? "1.0.0"}
+        </AppText>
       </View>
 
       <BecomeArtistModal visible={creatorModalOpen} onClose={() => setCreatorModalOpen(false)} />
@@ -297,39 +329,83 @@ function ArtistAnalyticsPreview({ stats }: { stats: ArtistStats }) {
     { label: "Titres", value: stats.songs },
   ];
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       onPress={() => router.push("/studio")}
-      style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, marginTop: spacing.sm })}
+      scaleTo={0.98}
+      style={{
+        flexDirection: "row",
+        backgroundColor: colors.primaryTint,
+        borderRadius: radii.md + 2,
+        padding: spacing.md,
+        gap: spacing.sm,
+        marginTop: spacing.sm,
+      }}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          backgroundColor: colors.primaryTint,
-          borderRadius: radii.md,
-          padding: spacing.md,
-          gap: spacing.sm,
-        }}
-      >
-        {items.map((item) => (
-          <View key={item.label} style={{ flex: 1, alignItems: "center", gap: 2 }}>
-            <AppText variant="subheading" color={colors.primary}>
-              {formatCount(item.value)}
-            </AppText>
-            <AppText variant="caption">{item.label}</AppText>
-          </View>
-        ))}
-      </View>
-    </Pressable>
+      {items.map((item) => (
+        <View key={item.label} style={{ flex: 1, alignItems: "center", gap: 3 }}>
+          <AppText variant="subheading" color={colors.primary} style={{ fontVariant: ["tabular-nums"] }}>
+            {formatCount(item.value)}
+          </AppText>
+          <AppText variant="caption" style={{ color: colors.textMuted, fontSize: 12 }}>
+            {item.label}
+          </AppText>
+        </View>
+      ))}
+    </PressableScale>
   );
 }
 
-function AppearanceSegmented() {  const mode = useThemeModeStore((state) => state.mode);
+function AppearanceSegmented() {
+  const mode = useThemeModeStore((state) => state.mode);
   const setMode = useThemeModeStore((state) => state.setMode);
-  const { colors } = useTheme();
+  const { colors, radii, shadows } = useTheme();
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const activeIndex = THEME_OPTIONS.findIndex((option) => option.value === mode);
+  const indicatorX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (containerWidth === 0) return;
+    Animated.spring(indicatorX, {
+      toValue: activeIndex * ((containerWidth - 8) / THEME_OPTIONS.length),
+      speed: 32,
+      bounciness: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, containerWidth, indicatorX]);
+
+  const itemWidth = containerWidth > 0 ? (containerWidth - 8) / THEME_OPTIONS.length : 0;
 
   return (
-    <View style={{ flexDirection: "row", gap: spacing.sm }}>
+    <View
+      onLayout={(event) => {
+        setContainerWidth(event.nativeEvent.layout.width);
+        setContainerHeight(event.nativeEvent.layout.height);
+      }}
+      style={{
+        flexDirection: "row",
+        backgroundColor: colors.surfaceHighlight,
+        borderRadius: radii.md + 4,
+        padding: 4,
+        marginBottom: spacing.xs,
+      }}
+    >
+      {itemWidth > 0 && containerHeight > 0 ? (
+        <Animated.View
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            width: itemWidth,
+            height: containerHeight - 8,
+            borderRadius: radii.md,
+            backgroundColor: colors.surfaceElevated,
+            boxShadow: shadows.card,
+            transform: [{ translateX: indicatorX }],
+          }}
+        />
+      ) : null}
       {THEME_OPTIONS.map((option) => {
         const active = mode === option.value;
         return (
@@ -337,19 +413,18 @@ function AppearanceSegmented() {  const mode = useThemeModeStore((state) => stat
             key={option.value}
             accessibilityRole="button"
             onPress={() => setMode(option.value)}
-            style={{
+            style={({ pressed }) => ({
               flex: 1,
               alignItems: "center",
               gap: spacing.xs,
               paddingVertical: spacing.md,
               borderRadius: radii.md,
-              backgroundColor: active ? colors.primaryTint : "transparent",
-              borderWidth: 1,
-              borderColor: active ? colors.primary : colors.border,
-            }}
+              opacity: pressed ? 0.7 : 1,
+              zIndex: 1,
+            })}
           >
             <Ionicons name={option.icon} size={20} color={active ? colors.primary : colors.textMuted} />
-            <AppText variant="caption" color={active ? colors.primary : colors.textMuted}>
+            <AppText variant="caption" color={active ? colors.primary : colors.textMuted} style={{ fontWeight: "600" }}>
               {option.label}
             </AppText>
           </Pressable>
@@ -359,23 +434,43 @@ function AppearanceSegmented() {  const mode = useThemeModeStore((state) => stat
   );
 }
 
-function SectionCard({ title, children }: { title?: string; children: ReactNode }) {
+/** Small-caps label sitting above a grouped card. */
+function Section({ label, children }: { label?: string; children: ReactNode }) {
   const { colors } = useTheme();
   return (
-    <View style={{ backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.xs }}>
-      {title ? <AppText variant="subheading">{title}</AppText> : null}
-      {children}
+    <View style={{ gap: spacing.sm + 2 }}>
+      {label ? (
+        <AppText
+          variant="small"
+          style={{ color: colors.textFaint, letterSpacing: 1.4, marginLeft: 6, textTransform: "uppercase" }}
+        >
+          {label}
+        </AppText>
+      ) : null}
+      <Card>{children}</Card>
     </View>
   );
 }
 
-function Divider() {
+/** Hairline separator, inset to align with row text past the icon tile. */
+function RowDivider() {
   const { colors } = useTheme();
-  return <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.xs }} />;
+  return (
+    <View
+      style={{
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: colors.hairline,
+        marginLeft: 36 + spacing.md,
+        marginVertical: 5,
+      }}
+    />
+  );
 }
 
 interface SettingsRowProps {
-  icon: IconName;
+  icon?: IconName;
+  /** Custom leading element (e.g. an avatar) rendered instead of the icon tile. */
+  avatar?: ReactNode;
   label: string;
   sublabel?: string;
   destructive?: boolean;
@@ -383,7 +478,7 @@ interface SettingsRowProps {
   right?: ReactNode;
 }
 
-function SettingsRow({ icon, label, sublabel, destructive, onPress, right }: SettingsRowProps) {
+function SettingsRow({ icon, avatar, label, sublabel, destructive, onPress, right }: SettingsRowProps) {
   const { colors } = useTheme();
   return (
     <Pressable
@@ -394,24 +489,36 @@ function SettingsRow({ icon, label, sublabel, destructive, onPress, right }: Set
         flexDirection: "row",
         alignItems: "center",
         gap: spacing.md,
-        paddingVertical: spacing.sm,
-        opacity: pressed ? 0.6 : 1,
+        paddingVertical: spacing.sm + 2,
+        paddingHorizontal: spacing.xs,
+        marginHorizontal: -spacing.xs,
+        borderRadius: radii.sm,
+        backgroundColor: pressed && onPress ? colors.surfaceHighlight : "transparent",
       })}
     >
-      <View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: radii.md,
-          backgroundColor: destructive ? "transparent" : colors.primaryTint,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Ionicons name={icon} size={17} color={destructive ? colors.danger : colors.primary} />
-      </View>
+      {avatar ?? (
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: radii.md,
+            backgroundColor: destructive ? withAlpha(colors.danger, 0.12) : colors.primaryTint,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name={icon ?? "ellipse-outline"} size={17} color={destructive ? colors.danger : colors.primary} />
+        </View>
+      )}
       <View style={{ flex: 1, gap: 1 }}>
-        <AppText style={{ color: destructive ? colors.danger : colors.text, fontSize: 15, fontWeight: "500" }}>
+        <AppText
+          style={{
+            color: destructive ? colors.danger : colors.text,
+            fontSize: 15,
+            fontWeight: "500",
+            lineHeight: 20,
+          }}
+        >
           {label}
         </AppText>
         {sublabel ? <AppText variant="caption">{sublabel}</AppText> : null}

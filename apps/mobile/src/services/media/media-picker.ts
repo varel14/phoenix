@@ -46,6 +46,55 @@ export async function pickImageFile(): Promise<PickedMedia | null> {
   };
 }
 
+/** Photos straight from the camera (permission requested on first use). */
+export async function capturePhoto(): Promise<PickedMedia | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) return null;
+  const result = await ImagePicker.launchCameraAsync({ quality: 0.8, exif: false });
+  const asset = result.canceled ? undefined : result.assets[0];
+  if (!asset) return null;
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? `photo-${Date.now()}.jpg`,
+    mimeType: asset.mimeType ?? "image/jpeg",
+    fileSizeBytes: asset.fileSize ?? null,
+  };
+}
+
+/** Short chat videos from the library. */
+export async function pickChatVideo(): Promise<PickedMedia | null> {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["videos"],
+    quality: 0.8,
+    exif: false,
+  });
+  const asset = result.canceled ? undefined : result.assets[0];
+  if (!asset) return null;
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? `video-${Date.now()}.mp4`,
+    mimeType: asset.mimeType ?? "video/mp4",
+    fileSizeBytes: asset.fileSize ?? null,
+  };
+}
+
+/** Generic documents (pdf, office, text, zip) for chat FILE messages. */
+export function pickChatDocument(): Promise<PickedMedia | null> {
+  return pickDocument([
+    "application/pdf",
+    "application/zip",
+    "application/x-zip-compressed",
+    "text/plain",
+    "text/csv",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ]);
+}
+
 /** Uploads a picked file and returns the public absolute URL + metadata. */
 export async function uploadPickedMedia(media: PickedMedia, kind: UploadKind): Promise<UploadResult & { publicUrl: string }> {
   const result = await uploadFile(media.uri, kind, media.mimeType);

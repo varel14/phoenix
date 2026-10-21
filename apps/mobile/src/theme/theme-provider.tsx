@@ -1,17 +1,23 @@
+import { mmkvJsonStorage } from "@/services/storage/mmkv";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useColorScheme } from "react-native";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  ambientGradients,
   darkColors,
-  gradients,
+  darkGradients,
+  glows,
   layout,
   lightColors,
+  lightGradients,
   radii,
+  shadows,
   spacing,
   typography,
   type Palette,
+  type Shadows,
+  type ThemeGradients,
 } from "./index";
 
 export type ThemeMode = "system" | "dark" | "light";
@@ -27,13 +33,19 @@ export const useThemeModeStore = create<ThemeModeState>()(
       mode: "system",
       setMode: (mode) => set({ mode }),
     }),
-    { name: "phoenix-theme-mode", storage: createJSONStorage(() => AsyncStorage) },
+    {
+      name: "phoenix-theme-mode",
+      storage: mmkvJsonStorage,
+    },
   ),
 );
 
 export interface Theme {
   colors: Palette;
-  gradients: typeof gradients;
+  gradients: ThemeGradients;
+  ambient: typeof ambientGradients;
+  shadows: Shadows;
+  glows: typeof glows;
   spacing: typeof spacing;
   radii: typeof radii;
   typography: typeof typography;
@@ -52,7 +64,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const theme = useMemo<Theme>(
     () => ({
       colors: isDark ? darkColors : lightColors,
-      gradients,
+      gradients: isDark ? darkGradients : lightGradients,
+      ambient: ambientGradients,
+      shadows: isDark ? shadows.dark : shadows.light,
+      glows,
       spacing,
       radii,
       typography,
@@ -62,7 +77,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [isDark],
   );
 
-  return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme(): Theme {

@@ -2,7 +2,7 @@ import { File, UploadType } from "expo-file-system";
 import Cookies from "@react-native-cookies/cookies";
 import { API_URL, ApiError } from "./api-client";
 
-export type UploadKind = "voice" | "audio" | "video" | "image" | "digital";
+export type UploadKind = "voice" | "audio" | "video" | "image" | "file" | "digital";
 
 export interface UploadResult {
   kind: UploadKind;

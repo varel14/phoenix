@@ -64,6 +64,11 @@ export function useOrders() {
   return useQuery({ queryKey: queryKeys.orders(), queryFn: () => ordersApi.list({ limit: 50 }) });
 }
 
-export function useOrder(id: string) {
-  return useQuery({ queryKey: queryKeys.order(id), queryFn: () => ordersApi.getById(id) });
+export function useOrder(id: string, options: { enabled?: boolean; refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: queryKeys.order(id),
+    queryFn: () => ordersApi.getById(id),
+    enabled: options.enabled ?? id.length > 0,
+    refetchInterval: options.refetchInterval,
+  });
 }

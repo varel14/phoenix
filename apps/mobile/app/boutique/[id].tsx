@@ -265,7 +265,7 @@ function VariantChip({
       style={{
         paddingHorizontal: spacing.lg,
         height: 40,
-        borderRadius: radii.full,
+        borderRadius: radii.md,
         backgroundColor: selected ? colors.primary : colors.surface,
         borderWidth: 1,
         borderColor: selected ? colors.primary : colors.border,

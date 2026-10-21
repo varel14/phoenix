@@ -39,7 +39,7 @@ export default function ArtistDetailScreen() {
       {/* Gradient header with banner + avatar, per mockup artist profile. */}
       <View>
         <LinearGradient
-          colors={gradients.brand}
+          colors={gradients.brandDeep}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ height: 170, borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg, justifyContent: "flex-end" }}

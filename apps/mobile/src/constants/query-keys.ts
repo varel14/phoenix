@@ -36,11 +36,13 @@ export const queryKeys = {
   messages: (id: string) => ["messages", id] as const,
   callHistory: () => ["call-history"] as const,
 
-  paymentCategories: () => ["payment-categories"] as const,
-  paymentServices: (categoryId?: string) => ["payment-services", categoryId ?? "all"] as const,
-  paymentService: (id: string) => ["payment-service", id] as const,
   transactions: (status?: string) => ["transactions", status ?? "all"] as const,
   transaction: (id: string) => ["transaction", id] as const,
+
+  wallet: () => ["wallet"] as const,
+  walletTransactions: (type?: string) => ["wallet-transactions", type ?? "all"] as const,
+  walletTransaction: (id: string) => ["wallet-transaction", id] as const,
+  walletRecipients: (search: string) => ["wallet-recipients", search] as const,
 
   products: (params?: unknown) => ["products", params ?? {}] as const,
   product: (id: string) => ["product", id] as const,

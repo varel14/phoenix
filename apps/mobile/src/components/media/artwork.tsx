@@ -17,13 +17,22 @@ interface ArtworkProps {
 
 /** Artwork with a deterministic gradient + initials fallback. */
 export function Artwork({ uri, seed, label, size, radius = radii.md }: ArtworkProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const gradient = artworkGradient(seed);
   if (uri) {
     return (
       <Image
         source={{ uri: resolveAssetUrl(uri) }}
-        style={{ width: size, height: size, borderRadius: radius, backgroundColor: colors.surface }}
+        style={[
+          styles.image,
+          {
+            width: size,
+            height: size,
+            borderRadius: radius,
+            backgroundColor: colors.surface,
+            borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+          },
+        ]}
         contentFit="cover"
         transition={150}
       />
@@ -48,6 +57,9 @@ export function ThumbArtwork(props: Omit<ArtworkProps, "size">) {
 }
 
 const styles = StyleSheet.create({
+  image: {
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   fallback: {
     alignItems: "center",
     justifyContent: "center",

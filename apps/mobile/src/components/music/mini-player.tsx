@@ -1,6 +1,7 @@
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { layout, radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatDuration } from "@/utils/format";
@@ -12,7 +13,7 @@ import { Artwork } from "@/components/media/artwork";
 /** Global mini player docked above the tab bar; opens Now Playing on tap. */
 export function MiniPlayer() {
   const router = useRouter();
-  const { colors, gradients } = useTheme();
+  const { colors, gradients, shadows } = useTheme();
   const song = usePlayerStore(selectCurrentSong);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const status = usePlayerStore((state) => state.status);
@@ -27,8 +28,11 @@ export function MiniPlayer() {
     <View
       style={{
         backgroundColor: colors.playerBar,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
+        borderRadius: radii.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.hairline,
+        boxShadow: shadows.float,
+        overflow: "hidden",
       }}
     >
       {/* Brand-gradient progress line across the top of the bar. */}
@@ -37,7 +41,10 @@ export function MiniPlayer() {
           colors={gradients.brand}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={{ height: 3, width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }}
+          style={{
+            height: 3,
+            width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+          }}
         />
       </View>
       <Pressable
@@ -54,23 +61,68 @@ export function MiniPlayer() {
           pressed && { opacity: 0.85 },
         ]}
       >
-        <Artwork uri={song.thumbnailUrl} seed={song.id} label={song.title} size={44} radius={radii.sm} />
+        <Artwork
+          uri={song.thumbnailUrl}
+          seed={song.id}
+          label={song.title}
+          size={44}
+          radius={radii.sm}
+        />
         <View style={{ flex: 1, gap: 2 }}>
-          <AppText variant="subheading" numberOfLines={1} style={{ fontSize: 14 }}>
+          <AppText
+            variant="subheading"
+            numberOfLines={1}
+            style={{ fontSize: 14 }}
+          >
             {song.title}
           </AppText>
           <AppText variant="caption" numberOfLines={1}>
-            {song.artist.name} · {formatDuration(currentTime)} / {formatDuration(duration)}
+            {song.artist.name} · {formatDuration(currentTime)} /{" "}
+            {formatDuration(duration)}
           </AppText>
         </View>
-        <IconButton
-          icon={isPlaying ? "pause" : "play"}
-          size={20}
-          color={colors.text}
-          onPress={() => playerService.togglePlay()}
+        {/* Brand-gradient play disc — the signature control of the mini player. */}
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={isPlaying ? "Pause" : "Play"}
+          onPress={() => playerService.togglePlay()}
+          style={({ pressed }) => ({
+            width: 38,
+            height: 38,
+            borderRadius: radii.full,
+            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: pressed ? 0.85 : 1,
+            transform: [{ scale: pressed ? 0.94 : 1 }],
+          })}
+        >
+          <LinearGradient
+            colors={gradients.brand}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              flex: 1,
+              width: "100%",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={isPlaying ? "pause" : "play"}
+              size={20}
+              color={colors.onPrimary}
+              style={{ marginLeft: isPlaying ? 0 : 2 }}
+            />
+          </LinearGradient>
+        </Pressable>
+        <IconButton
+          icon="play-skip-forward"
+          size={18}
+          color={colors.textMuted}
+          onPress={() => playerService.next()}
+          accessibilityLabel="Next"
         />
-        <IconButton icon="play-skip-forward" size={18} color={colors.textMuted} onPress={() => playerService.next()} accessibilityLabel="Next" />
       </Pressable>
     </View>
   );

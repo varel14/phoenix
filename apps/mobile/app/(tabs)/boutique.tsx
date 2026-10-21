@@ -18,7 +18,6 @@ export default function BoutiqueScreen() {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"PHYSICAL" | "DIGITAL" | null>(null);
 
   const trimmed = search.trim();
   const categoriesQuery = useProductCategories();
@@ -26,13 +25,12 @@ export default function BoutiqueScreen() {
     limit: 24,
     ...(trimmed ? { search: trimmed } : {}),
     ...(activeCategory ? { categoryId: activeCategory } : {}),
-    ...(typeFilter ? { type: typeFilter } : {}),
   });
   const cartQuery = useCart();
   const itemCount = cartQuery.data?.itemCount ?? 0;
 
   const products = productsQuery.data?.data ?? [];
-  const featured = !trimmed && !activeCategory && !typeFilter ? products[0] : undefined;
+  const featured = !trimmed && !activeCategory ? products[0] : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
@@ -76,37 +74,6 @@ export default function BoutiqueScreen() {
         />
       </View>
 
-      {/* Type filter */}
-      <View style={{ flexDirection: "row", paddingHorizontal: spacing.lg, marginTop: spacing.md, gap: spacing.sm }}>
-        {(
-          [
-            [null, "Tout"],
-            ["PHYSICAL", "Physique"],
-            ["DIGITAL", "Digital"],
-          ] as Array<[null | "PHYSICAL" | "DIGITAL", string]>
-        ).map(([value, label]) => (
-          <Pressable
-            key={label}
-            accessibilityRole="button"
-            onPress={() => setTypeFilter(value)}
-            style={{
-              paddingHorizontal: spacing.lg,
-              height: 32,
-              borderRadius: radii.full,
-              backgroundColor: typeFilter === value ? colors.primary : colors.surface,
-              borderWidth: 1,
-              borderColor: typeFilter === value ? colors.primary : colors.border,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <AppText style={{ color: typeFilter === value ? colors.onPrimary : colors.textMuted, fontWeight: "600", fontSize: 12 }}>
-              {label}
-            </AppText>
-          </Pressable>
-        ))}
-      </View>
-
       {/* Categories */}
       {categoriesQuery.data && categoriesQuery.data.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.md }} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}>
@@ -147,7 +114,7 @@ function CategoryChip({ label, active, onPress }: { label: string; active: boole
       style={{
         paddingHorizontal: spacing.lg,
         height: 34,
-        borderRadius: radii.full,
+        borderRadius: radii.md,
         backgroundColor: active ? colors.primary : colors.surface,
         borderWidth: 1,
         borderColor: active ? colors.primary : colors.border,

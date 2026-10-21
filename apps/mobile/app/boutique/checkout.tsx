@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useCart, useCreateOrder } from "@/hooks/use-market";
-import { useDevConfirmPayment } from "@/hooks/use-payments";
-import { AppText, Button, ErrorView, IconButton, Input, LoadingView } from "@/components/ui";
+import { useCart, useCreateOrder, useOrder } from "@/hooks/use-market";
+import { AppText, Button, EmptyView, ErrorView, IconButton, Input, LoadingView } from "@/components/ui";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatMoney } from "@/utils/money";
@@ -13,12 +12,18 @@ import type { ShippingAddressInput } from "@/types/market";
 
 type Step = "infos" | "recap" | "paiement" | "confirmation";
 
+interface PlacedOrder {
+  id: string;
+  reference: string;
+  total: number;
+  currency: string;
+}
+
 export default function CheckoutScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const cartQuery = useCart();
   const createOrder = useCreateOrder();
-  const devConfirm = useDevConfirmPayment();
   const cart = cartQuery.data;
 
   const [step, setStep] = useState<Step>("infos");
@@ -30,25 +35,37 @@ export default function CheckoutScreen() {
     addressLine: "",
     instructions: "",
   });
-  const [orderRef, setOrderRef] = useState<string | null>(null);
-  const [payRef, setPayRef] = useState<string | null>(null);
-  const [paid, setPaid] = useState(false);
+  const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  const [placedRequiresShipping, setPlacedRequiresShipping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // No payment provider is plugged in yet: the order stays AWAITING_PAYMENT
+  // until the server confirms the transaction, so poll the order status.
+  const orderPoll = useOrder(placedOrder?.id ?? "", {
+    enabled: step === "paiement" && placedOrder != null,
+    refetchInterval: step === "paiement" ? 4000 : false,
+  });
+
+  useEffect(() => {
+    if (step === "paiement" && orderPoll.data?.status === "PAID") {
+      setStep("confirmation");
+    }
+  }, [step, orderPoll.data]);
 
   if (cartQuery.isLoading) return <LoadingView label="Chargement du panier…" />;
   if (cartQuery.isError) {
     return <ErrorView message={(cartQuery.error as Error)?.message} onRetry={() => void cartQuery.refetch()} />;
   }
-  if (!cart || cart.items.length === 0) {
+  if ((!cart || cart.items.length === 0) && !placedOrder) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
-        <BackHeader title="Livraison" />
-        <LoadingView />
+        <BackHeader title="Panier" />
+        <EmptyView title="Votre panier est vide" subtitle="Ajoutez des produits depuis la Boutique pour passer commande." />
       </View>
     );
   }
 
-  const requiresShipping = cart.requiresShipping;
+  const requiresShipping = cart?.requiresShipping ?? placedRequiresShipping;
   const addressValid =
     address.recipientName.trim().length >= 2 && address.phone.trim().length >= 8 && address.city.trim().length >= 2;
 
@@ -56,20 +73,14 @@ export default function CheckoutScreen() {
     setError(null);
     createOrder.mutate(requiresShipping ? address : undefined, {
       onSuccess: (data) => {
-        setOrderRef(data.order.reference);
-        setPayRef(data.transaction.reference);
+        setPlacedOrder({
+          id: data.order.id,
+          reference: data.order.reference,
+          total: data.order.total,
+          currency: data.order.currency,
+        });
+        setPlacedRequiresShipping(requiresShipping);
         setStep("paiement");
-      },
-      onError: (mutationError) => setError((mutationError as Error).message),
-    });
-  }
-
-  function confirmPayment() {
-    if (!payRef) return;
-    devConfirm.mutate(payRef, {
-      onSuccess: () => {
-        setPaid(true);
-        setStep("confirmation");
       },
       onError: (mutationError) => setError((mutationError as Error).message),
     });
@@ -116,7 +127,7 @@ export default function CheckoutScreen() {
         </ScrollView>
       ) : null}
 
-      {step === "recap" ? (
+      {step === "recap" && cart ? (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 120 }}>
           <View style={{ backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.md }}>
             <AppText variant="subheading">Votre commande</AppText>
@@ -182,23 +193,35 @@ export default function CheckoutScreen() {
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="card" size={32} color={colors.primary} />
+              <Ionicons name="hourglass" size={32} color={colors.primary} />
             </View>
             <AppText variant="heading">Paiement en attente</AppText>
-            {orderRef ? <AppText variant="bodyMuted">Commande {orderRef}</AppText> : null}
+            {placedOrder ? <AppText variant="bodyMuted">Commande {placedOrder.reference}</AppText> : null}
             <AppText variant="bodyMuted" align="center">
-              La commande sera confirmée uniquement après validation du paiement par le serveur.
+              Le paiement en ligne n'est pas encore disponible : aucun prestataire de paiement n'est connecté à
+              l'application.
             </AppText>
-            <View style={{ backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, alignSelf: "stretch" }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <AppText variant="bodyMuted">À payer</AppText>
-                <AppText variant="subheading" color={colors.accent}>
-                  {formatMoney(cart.subtotal, cart.currency)}
-                </AppText>
+            <AppText variant="bodyMuted" align="center">
+              Votre commande est bien enregistrée. Elle restera « en attente de paiement » jusqu'à ce que le serveur
+              confirme le règlement.
+            </AppText>
+            {placedOrder ? (
+              <View style={{ backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, alignSelf: "stretch" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <AppText variant="bodyMuted">À payer</AppText>
+                  <AppText variant="subheading" color={colors.accent}>
+                    {formatMoney(placedOrder.total, placedOrder.currency)}
+                  </AppText>
+                </View>
               </View>
+            ) : null}
+            <AppText variant="small" color={colors.textFaint} align="center">
+              {orderPoll.isFetching ? "Vérification de l'état du paiement…" : "L'état du paiement est vérifié automatiquement."}
+            </AppText>
+            <View style={{ gap: spacing.md, alignSelf: "stretch", marginTop: spacing.md }}>
+              <Button label="Voir mes commandes" onPress={() => router.replace("/boutique/orders")} />
+              <Button label="Retour à la Boutique" variant="ghost" onPress={() => router.dismissAll()} />
             </View>
-            {error ? <AppText style={{ color: colors.danger, fontSize: 13 }}>{error}</AppText> : null}
-            <Button label="Confirmer le paiement (démo)" onPress={confirmPayment} loading={devConfirm.isPending} />
           </View>
         </ScrollView>
       ) : null}
@@ -219,10 +242,10 @@ export default function CheckoutScreen() {
               <Ionicons name="checkmark" size={34} color="#fff" />
             </View>
             <AppText variant="title">Commande confirmée</AppText>
-            {orderRef ? (
+            {placedOrder ? (
               <AppText variant="bodyMuted" align="center">
-                Merci ! Votre commande {orderRef} est confirmée.
-                {cart.requiresShipping ? " Elle sera préparée pour l'expédition." : " Vos contenus digitaux sont disponibles dans vos commandes."}
+                Merci ! Votre commande {placedOrder.reference} est confirmée.
+                {placedRequiresShipping ? " Elle sera préparée pour l'expédition." : " Vos contenus digitaux sont disponibles dans vos commandes."}
               </AppText>
             ) : null}
             <View style={{ gap: spacing.md, alignSelf: "stretch" }}>

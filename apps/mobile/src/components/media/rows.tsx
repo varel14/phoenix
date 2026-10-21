@@ -1,4 +1,7 @@
-import { useDownloadsStore, selectDownloadState } from "@/services/downloads/download-manager";
+import {
+  useDownloadsStore,
+  selectDownloadState,
+} from "@/services/downloads/download-manager";
 import { useToggleFavorite } from "@/hooks/use-catalog";
 import { MediaRow } from "./media-row";
 import { ProgressBar } from "@/components/ui";
@@ -25,16 +28,29 @@ interface InteractiveRowProps {
  * MediaRow wired with favorite toggle, download action and progress.
  * Every list screen uses this so behavior is consistent app-wide.
  */
-export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPlaylist, menuActions, subtitleOverride }: InteractiveRowProps) {
+export function InteractiveRow({
+  media,
+  mediaType,
+  isFavorite,
+  onPlay,
+  onAddToPlaylist,
+  menuActions,
+  subtitleOverride,
+}: InteractiveRowProps) {
   const toggleFavorite = useToggleFavorite();
-  const downloadState = useDownloadsStore((state) => selectDownloadState(state, mediaType, media.id));
+  const downloadState = useDownloadsStore((state) =>
+    selectDownloadState(state, mediaType, media.id),
+  );
   const isDownloaded = useDownloadsStore((state) =>
-    state.library.some((entry) => entry.mediaType === mediaType && entry.mediaId === media.id),
+    state.library.some(
+      (entry) => entry.mediaType === mediaType && entry.mediaId === media.id,
+    ),
   );
   const startDownload = useDownloadsStore((state) => state.start);
   const removeDownload = useDownloadsStore((state) => state.remove);
 
-  const downloading = downloadState?.state === "downloading" || downloadState?.state === "paused";
+  const downloading =
+    downloadState?.state === "downloading" || downloadState?.state === "paused";
   const downloadable = media.isDownloadable;
 
   return (
@@ -44,10 +60,18 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
         mediaType={mediaType}
         isFavorite={isFavorite}
         onPlay={onPlay}
-        onToggleFavorite={() => toggleFavorite.mutate({ mediaType, mediaId: media.id, favorite: !isFavorite })}
+        onToggleFavorite={() =>
+          toggleFavorite.mutate({
+            mediaType,
+            mediaId: media.id,
+            favorite: !isFavorite,
+          })
+        }
         subtitleOverride={
           subtitleOverride ??
-          (mediaType === "SONG" && isDownloaded ? `${media.artist.name} · available offline` : undefined)
+          (mediaType === "SONG" && isDownloaded
+            ? `${media.artist.name} · available offline`
+            : undefined)
         }
         menuActions={
           downloadable
@@ -59,7 +83,11 @@ export function InteractiveRow({ media, mediaType, isFavorite, onPlay, onAddToPl
                       onPress: () => void removeDownload(mediaType, media.id),
                     }
                   : {
-                      label: downloading ? "Downloading…" : "Download",
+                      label: downloading
+                        ? "Downloading…"
+                        : mediaType === "SONG"
+                          ? "Télécharger (1 FCFA)"
+                          : "Download",
                       icon: "download-outline" as const,
                       onPress: () => {
                         if (!downloading) void startDownload(media);
@@ -95,5 +123,9 @@ function DownloadSize({ media }: { media: Song | Video }) {
   const { colors } = useTheme();
   const size = "fileSizeBytes" in media ? media.fileSizeBytes : null;
   if (!size) return null;
-  return <AppText style={{ fontSize: 9, color: colors.textMuted }}>{formatFileSize(size)}</AppText>;
+  return (
+    <AppText style={{ fontSize: 9, color: colors.textMuted }}>
+      {formatFileSize(size)}
+    </AppText>
+  );
 }

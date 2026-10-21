@@ -1,6 +1,6 @@
+import { mmkvJsonStorage } from "@/services/storage/mmkv";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type AudioQuality = "AUTO" | "HIGH" | "DATA_SAVER";
 
@@ -24,6 +24,6 @@ export const usePreferencesStore = create<PreferencesState>()(
       setWifiOnlyDownloads: (wifiOnlyDownloads) => set({ wifiOnlyDownloads }),
       setPushNotifications: (pushNotifications) => set({ pushNotifications }),
     }),
-    { name: "phoenix-preferences", storage: createJSONStorage(() => AsyncStorage) },
+    { name: "phoenix-preferences", storage: mmkvJsonStorage },
   ),
 );

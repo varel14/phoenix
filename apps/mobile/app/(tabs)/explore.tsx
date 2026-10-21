@@ -86,7 +86,7 @@ export default function ExploreScreen() {
           style={{
             flexDirection: "row",
             backgroundColor: colors.primaryTint,
-            borderRadius: radii.full,
+            borderRadius: radii.md,
             padding: 3,
             gap: 3,
           }}
@@ -196,7 +196,7 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
       style={{
         flex: 1,
         height: 36,
-        borderRadius: radii.full,
+        borderRadius: radii.sm + 2,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: active ? colors.primary : "transparent",

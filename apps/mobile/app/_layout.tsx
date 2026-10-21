@@ -2,7 +2,12 @@ import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
 import { useNetworkState } from "expo-network";
 import * as SplashScreen from "expo-splash-screen";
 import { ThemeProvider, useTheme } from "@/theme/theme-provider";
@@ -71,12 +76,19 @@ function RootNavigator() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <StatusBar style={isDark ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-        <CallOverlay />
+        <KeyboardProvider>
+          <StatusBar style={isDark ? "light" : "dark"} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          >
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+          <CallOverlay />
+        </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );

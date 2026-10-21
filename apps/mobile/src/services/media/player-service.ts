@@ -1,5 +1,14 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from "expo-audio";
 import { resolveSongSource } from "./source-resolver";
+import {
+  getCachedAudioUri,
+  hydrateAudioCache,
+  noteAudioPlayback,
+} from "./audio-cache";
 import { usePlayerStore } from "@/stores/player-store";
 import { trackEvent } from "@/services/events/event-queue";
 import type { Song } from "@/types/api";
@@ -52,16 +61,23 @@ function load(song: Song) {
   const p = ensurePlayer();
   const store = usePlayerStore.getState();
   const source = resolveSongSource(song);
+  // Playback cache: a previously streamed copy plays from disk. Paid
+  // downloads (documents dir) take priority via the source resolver above.
+  const cachedUri = source.isLocal ? null : getCachedAudioUri(song.id);
 
   try {
     currentSourceKey = song.id;
     store.setStatus("loading");
     store.setError(null);
-    store.setOfflinePlayback(source.isLocal);
-    p.replace({ uri: source.uri });
+    store.setOfflinePlayback(source.isLocal || cachedUri !== null);
+    p.replace({ uri: cachedUri ?? source.uri });
     p.play();
     store.setPlaying(true);
     trackEvent({ eventType: "PLAY", mediaType: "SONG", songId: song.id });
+    if (!source.isLocal) {
+      // Cache a copy in the background so relistens start instantly.
+      void noteAudioPlayback(song);
+    }
   } catch {
     store.setStatus("error");
     store.setError("This track could not be played");
@@ -73,6 +89,7 @@ export const playerService = {
   async playQueue(queue: Song[], index = 0) {
     if (queue.length === 0) return;
     await ensureAudioMode();
+    await hydrateAudioCache();
     const store = usePlayerStore.getState();
     store.setQueue(queue, index);
     load(queue[index]!);

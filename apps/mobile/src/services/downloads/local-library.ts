@@ -1,5 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage as AsyncStorage } from "@/services/storage/mmkv";
 import type { MediaType, Song, Video } from "@/types/api";
 
 /**

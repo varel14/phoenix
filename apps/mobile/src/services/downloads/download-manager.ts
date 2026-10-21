@@ -27,6 +27,28 @@ export type DownloadState = "downloading" | "paused" | "completed" | "failed";
 export const SUBSCRIPTION_REQUIRED_MESSAGE =
   "Abonnement requis — abonnez-vous à la page de l'artiste (2 500 FCFA/mois) pour télécharger.";
 
+export const SONG_DOWNLOAD_PRICE_LABEL = "1 FCFA";
+
+/** Blocks the download and offers the subscriptions screen. */
+function warnSubscriptionRequired() {
+  Alert.alert("Abonnement requis", SUBSCRIPTION_REQUIRED_MESSAGE, [
+    { text: "Plus tard", style: "cancel" },
+    { text: "S'abonner", onPress: () => router.push("/premium") },
+  ]);
+}
+
+/** Blocks the download and offers the wallet top-up screen. */
+function warnInsufficientBalance() {
+  Alert.alert(
+    "Solde insuffisant",
+    `Le téléchargement d'un titre coûte ${SONG_DOWNLOAD_PRICE_LABEL}. Rechargez votre portefeuille pour continuer.`,
+    [
+      { text: "Plus tard", style: "cancel" },
+      { text: "Recharger", onPress: () => router.push("/pay") },
+    ],
+  );
+}
+
 export interface DownloadItemState {
   mediaType: MediaType;
   mediaId: string;
@@ -65,18 +87,14 @@ function isSong(media: Song | Video): media is Song {
   return "audioUrl" in media;
 }
 
-function asMediaRef(media: Song | Video): { mediaType: MediaType; mediaId: string; title: string } {
+function asMediaRef(media: Song | Video): {
+  mediaType: MediaType;
+  mediaId: string;
+  title: string;
+} {
   return isSong(media)
     ? { mediaType: "SONG", mediaId: media.id, title: media.title }
     : { mediaType: "VIDEO", mediaId: media.id, title: media.title };
-}
-
-/** Blocks the download and offers the subscriptions screen. */
-function warnSubscriptionRequired() {
-  Alert.alert("Abonnement requis", SUBSCRIPTION_REQUIRED_MESSAGE, [
-    { text: "Plus tard", style: "cancel" },
-    { text: "S'abonner", onPress: () => router.push("/premium") },
-  ]);
 }
 
 export const useDownloadsStore = create<DownloadsState>((set, get) => ({
@@ -91,14 +109,19 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       const items = { ...state.items };
       for (const [key, item] of Object.entries(items)) {
         if (item.state === "downloading") {
-          items[key] = { ...item, state: "failed", error: "Download was interrupted" };
+          items[key] = {
+            ...item,
+            state: "failed",
+            error: "Download was interrupted",
+          };
         }
       }
       return { library, items, hydrated: true };
     });
     setSourceResolver((song) => {
       const entry = get().library.find(
-        (candidate) => candidate.mediaType === "SONG" && candidate.mediaId === song.id,
+        (candidate) =>
+          candidate.mediaType === "SONG" && candidate.mediaId === song.id,
       );
       return entry ? { uri: entry.fileUri, isLocal: true } : undefined;
     });
@@ -112,16 +135,35 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     if (await getLocalEntry(mediaType, mediaId)) return; // already downloaded
 
     const url = isSong(media) ? media.audioUrl : media.videoUrl;
-    if (isSong(media) && !media.isDownloadable) return;
-    if (!isSong(media) && !media.isDownloadable) return;
+    if (!media.isDownloadable) return;
 
-    // Page subscription gate: downloads cost 1 FCFA/month to the artist under
-    // the cover of the 2 500 FCFA/month page subscription, so the server must
-    // see an active subscription. A network failure (offline, server down)
-    // stays permissive here — the authoritative check happens at registration.
-    try {
-      const status = await subscriptionsApi.getStatus();
-      if (!status.subscription || status.subscription.status !== "ACTIVE") {
+    if (isSong(media)) {
+      // Pay-per-download: registration charges 1 FCFA from the wallet once
+      // (atomically, server-side) and credits the artist. Re-downloads of an
+      // owned song return the existing record for free.
+      try {
+        await downloadsApi.register("SONG", mediaId);
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.code === "INSUFFICIENT_BALANCE"
+        ) {
+          set((state) => ({
+            items: {
+              ...state.items,
+              [key]: {
+                mediaType,
+                mediaId,
+                title: asMediaRef(media).title,
+                progress: 0,
+                state: "failed",
+                error: `Solde insuffisant — ${SONG_DOWNLOAD_PRICE_LABEL} requis`,
+              },
+            },
+          }));
+          warnInsufficientBalance();
+          return;
+        }
         set((state) => ({
           items: {
             ...state.items,
@@ -131,32 +173,62 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
               title: asMediaRef(media).title,
               progress: 0,
               state: "failed",
-              error: SUBSCRIPTION_REQUIRED_MESSAGE,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Connexion requise pour acheter ce titre",
             },
           },
         }));
-        warnSubscriptionRequired();
         return;
       }
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 403 || error.status === 401)) {
-        set((state) => ({
-          items: {
-            ...state.items,
-            [key]: {
-              mediaType,
-              mediaId,
-              title: asMediaRef(media).title,
-              progress: 0,
-              state: "failed",
-              error: SUBSCRIPTION_REQUIRED_MESSAGE,
+    } else {
+      // Video downloads stay under the page subscription: 2 500 FCFA/month
+      // with a 1 FCFA/month royalty per kept download. A network failure
+      // (offline, server down) stays permissive here — the authoritative
+      // check happens at registration.
+      try {
+        const status = await subscriptionsApi.getStatus();
+        if (!status.subscription || status.subscription.status !== "ACTIVE") {
+          set((state) => ({
+            items: {
+              ...state.items,
+              [key]: {
+                mediaType,
+                mediaId,
+                title: asMediaRef(media).title,
+                progress: 0,
+                state: "failed",
+                error: SUBSCRIPTION_REQUIRED_MESSAGE,
+              },
             },
-          },
-        }));
-        warnSubscriptionRequired();
-        return;
+          }));
+          warnSubscriptionRequired();
+          return;
+        }
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          (error.status === 403 || error.status === 401)
+        ) {
+          set((state) => ({
+            items: {
+              ...state.items,
+              [key]: {
+                mediaType,
+                mediaId,
+                title: asMediaRef(media).title,
+                progress: 0,
+                state: "failed",
+                error: SUBSCRIPTION_REQUIRED_MESSAGE,
+              },
+            },
+          }));
+          warnSubscriptionRequired();
+          return;
+        }
+        // Network error — fall through and try; the server decides at registration.
       }
-      // Network error — fall through and try; the server decides at registration.
     }
 
     const part = partDestination(mediaType, mediaId, url);
@@ -165,7 +237,14 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     set((state) => ({
       items: {
         ...state.items,
-        [key]: { mediaType, mediaId, title: asMediaRef(media).title, progress: 0, state: "downloading", error: null },
+        [key]: {
+          mediaType,
+          mediaId,
+          title: asMediaRef(media).title,
+          progress: 0,
+          state: "downloading",
+          error: null,
+        },
       },
     }));
 
@@ -178,7 +257,13 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
         return {
           items: {
             ...state.items,
-            [key]: { ...item, progress: data.totalBytes > 0 ? Math.min(1, data.bytesWritten / data.totalBytes) : 0 },
+            [key]: {
+              ...item,
+              progress:
+                data.totalBytes > 0
+                  ? Math.min(1, data.bytesWritten / data.totalBytes)
+                  : 0,
+            },
           },
         };
       });
@@ -193,35 +278,72 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
           // Paused — wait for resume or user action.
           return;
         }
-        const entry = isSong(media) ? songEntryFromSong(media, file) : entryFromVideo(media, file);
+        const entry = isSong(media)
+          ? songEntryFromSong(media, file)
+          : entryFromVideo(media, file);
         await saveLocalEntry(entry);
         finalizeStorage(entry, current?.part ?? null);
 
         set((state) => ({
-          items: { ...state.items, [key]: { ...state.items[key]!, progress: 1, state: "completed", error: null } },
-          library: [entry, ...state.library.filter((candidate) => taskKey(candidate.mediaType, candidate.mediaId) !== key)],
+          items: {
+            ...state.items,
+            [key]: {
+              ...state.items[key]!,
+              progress: 1,
+              state: "completed",
+              error: null,
+            },
+          },
+          library: [
+            entry,
+            ...state.library.filter(
+              (candidate) =>
+                taskKey(candidate.mediaType, candidate.mediaId) !== key,
+            ),
+          ],
         }));
 
-        // Server record + offline-safe DOWNLOAD event (best effort). A
-        // SUBSCRIPTION_REQUIRED rejection means the page subscription lapsed
-        // mid-flight: discard the local copy so no track is kept unpaid.
-        try {
-          await downloadsApi.register(mediaType, mediaId);
-        } catch (error) {
-          if (error instanceof ApiError && error.code === "SUBSCRIPTION_REQUIRED") {
-            await removeLocalEntry(mediaType, mediaId);
-            activeTasks.delete(key);
-            set((state) => ({
-              library: state.library.filter((candidate) => taskKey(candidate.mediaType, candidate.mediaId) !== key),
-              items: {
-                ...state.items,
-                [key]: { ...state.items[key]!, progress: 0, state: "failed", error: SUBSCRIPTION_REQUIRED_MESSAGE },
-              },
-            }));
-            warnSubscriptionRequired();
-            return;
+        // Server record + offline-safe DOWNLOAD event (best effort). Songs
+        // were already registered (and charged) before the transfer, so only
+        // videos register here. A SUBSCRIPTION_REQUIRED rejection means the
+        // page subscription lapsed mid-flight: discard the local copy so no
+        // video is kept unpaid.
+        if (!isSong(media)) {
+          try {
+            await downloadsApi.register(mediaType, mediaId);
+          } catch (error) {
+            if (
+              error instanceof ApiError &&
+              error.code === "SUBSCRIPTION_REQUIRED"
+            ) {
+              await removeLocalEntry(mediaType, mediaId);
+              activeTasks.delete(key);
+              set((state) => ({
+                library: state.library.filter(
+                  (candidate) =>
+                    taskKey(candidate.mediaType, candidate.mediaId) !== key,
+                ),
+                items: {
+                  ...state.items,
+                  [key]: {
+                    ...state.items[key]!,
+                    progress: 0,
+                    state: "failed",
+                    error: SUBSCRIPTION_REQUIRED_MESSAGE,
+                  },
+                },
+              }));
+              warnSubscriptionRequired();
+              return;
+            }
+            trackEvent({
+              eventType: "DOWNLOAD",
+              mediaType,
+              ...(mediaType === "SONG"
+                ? { songId: mediaId }
+                : { videoId: mediaId }),
+            });
           }
-          trackEvent({ eventType: "DOWNLOAD", mediaType, ...(mediaType === "SONG" ? { songId: mediaId } : { videoId: mediaId }) });
         }
         if (mediaType === "SONG") {
           playerService.reloadCurrentIfActive(mediaId);
@@ -253,7 +375,8 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     set((state) => {
       const items: Record<string, DownloadItemState> = {};
       for (const [key, item] of Object.entries(state.items)) {
-        items[key] = item.state === "downloading" ? { ...item, state: "paused" } : item;
+        items[key] =
+          item.state === "downloading" ? { ...item, state: "paused" } : item;
       }
       return { items };
     });
@@ -266,7 +389,12 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       const key = taskKey(mediaType, mediaId);
       const item = state.items[key];
       if (!item) return state;
-      return { items: { ...state.items, [key]: { ...item, state: "failed", error: "Tap to retry" } } };
+      return {
+        items: {
+          ...state.items,
+          [key]: { ...item, state: "failed", error: "Tap to retry" },
+        },
+      };
     });
   },
 
@@ -274,7 +402,8 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     await removeLocalEntry(mediaType, mediaId);
     set((state) => ({
       library: state.library.filter(
-        (entry) => !(entry.mediaType === mediaType && entry.mediaId === mediaId),
+        (entry) =>
+          !(entry.mediaType === mediaType && entry.mediaId === mediaId),
       ),
       items: (() => {
         const items = { ...state.items };
@@ -306,6 +435,12 @@ export function selectDownloadState(
   return state.items[taskKey(mediaType, mediaId)];
 }
 
-export function selectIsDownloaded(state: DownloadsState, mediaType: MediaType, mediaId: string): boolean {
-  return state.library.some((entry) => entry.mediaType === mediaType && entry.mediaId === mediaId);
+export function selectIsDownloaded(
+  state: DownloadsState,
+  mediaType: MediaType,
+  mediaId: string,
+): boolean {
+  return state.library.some(
+    (entry) => entry.mediaType === mediaType && entry.mediaId === mediaId,
+  );
 }
