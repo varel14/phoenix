@@ -1,9 +1,14 @@
 import type { Prisma } from "./../generated/prisma/client.js";
 import { prisma } from "../config/prisma.js";
 
-export const paymentServiceFieldInclude = { fields: { orderBy: { sortOrder: "asc" as const } } } as const;
+// Clients render `service.category.name`, so the category must travel with the
+// service everywhere it is returned (list and detail alike).
+export const paymentServiceDetailInclude = {
+  fields: { orderBy: { sortOrder: "asc" as const } },
+  category: true,
+} as const;
 
-export type PaymentServiceWithFields = Prisma.PaymentServiceGetPayload<{ include: typeof paymentServiceFieldInclude }>;
+export type PaymentServiceWithFields = Prisma.PaymentServiceGetPayload<{ include: typeof paymentServiceDetailInclude }>;
 
 export type PaymentTransactionWithRelations = Prisma.PaymentTransactionGetPayload<{
   include: {
@@ -42,7 +47,7 @@ export const paymentRepository = {
   async findServiceById(id: string): Promise<PaymentServiceWithFields | null> {
     return prisma.paymentService.findFirst({
       where: { id, isActive: true, category: { isActive: true } },
-      include: paymentServiceFieldInclude,
+      include: paymentServiceDetailInclude,
     });
   },
 

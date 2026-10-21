@@ -26,6 +26,11 @@ export const listPaymentsQuerySchema = paginationSchema.extend({
   status: paymentTransactionStatusSchema.optional(),
 });
 
+/** Transactions are addressed by their public PHX-PAY reference, not their id. */
+export const referenceParamsSchema = z.object({
+  reference: z.string().min(1).max(100),
+});
+
 export const paymentWebhookBodySchema = z.object({
   reference: z.string().min(1).max(100),
   providerReference: z.string().min(1).max(200).optional(),

@@ -28,6 +28,7 @@ export async function truncateAll() {
      push_tokens,
      payment_categories, payment_services, payment_service_fields,
      payment_transactions, payment_receipts,
+     wallets, wallet_transactions,
      product_categories, products, product_variants, product_images,
      carts, cart_items, orders, order_items, order_addresses
      CASCADE`,
@@ -53,14 +54,19 @@ function extractCookie(res: request.Response): string {
   return "";
 }
 
-export async function createUser(name: string, email: string): Promise<TestUser> {
+export async function createUser(
+  name: string,
+  email: string,
+): Promise<TestUser> {
   const app = await api();
   const res = await app
     .post("/api/v1/auth/sign-up/email")
     .send({ name, email, password: "password123" });
 
   if (res.status !== 200 && res.status !== 201) {
-    throw new Error(`Failed to create user ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+    throw new Error(
+      `Failed to create user ${email}: ${res.status} ${JSON.stringify(res.body)}`,
+    );
   }
 
   return {
@@ -72,19 +78,32 @@ export async function createUser(name: string, email: string): Promise<TestUser>
   };
 }
 
-export async function signIn(email: string, password = "password123"): Promise<string> {
+export async function signIn(
+  email: string,
+  password = "password123",
+): Promise<string> {
   const app = await api();
-  const res = await app.post("/api/v1/auth/sign-in/email").send({ email, password });
+  const res = await app
+    .post("/api/v1/auth/sign-in/email")
+    .send({ email, password });
   return extractCookie(res);
 }
 
 /** Registers a user and promotes them to an artist with their own profile. */
-export async function createArtist(name: string, email: string): Promise<TestUser & { artistId: string }> {
+export async function createArtist(
+  name: string,
+  email: string,
+): Promise<TestUser & { artistId: string }> {
   const user = await createUser(name, email);
   const app = await api();
-  const res = await app.post("/api/v1/artists").set("Cookie", user.cookie).send({ name });
+  const res = await app
+    .post("/api/v1/artists")
+    .set("Cookie", user.cookie)
+    .send({ name });
   if (res.status !== 201) {
-    throw new Error(`Failed to create artist ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+    throw new Error(
+      `Failed to create artist ${email}: ${res.status} ${JSON.stringify(res.body)}`,
+    );
   }
   return { ...user, role: "ARTIST", artistId: res.body.data.id };
 }
@@ -94,26 +113,43 @@ export async function publishSong(
   cookie: string,
   artistId: string,
   title: string,
+  options?: { isDownloadable?: boolean },
 ): Promise<string> {
   const app = await api();
   const res = await app
     .post(`/api/v1/artists/${artistId}/songs`)
     .set("Cookie", cookie)
-    .send({ title, audioUrl: "https://example.com/audio.mp3", isDownloadable: true });
+    .send({
+      title,
+      audioUrl: "https://example.com/audio.mp3",
+      isDownloadable: options?.isDownloadable ?? true,
+    });
   if (res.status !== 201) {
-    throw new Error(`Failed to publish song: ${res.status} ${JSON.stringify(res.body)}`);
+    throw new Error(
+      `Failed to publish song: ${res.status} ${JSON.stringify(res.body)}`,
+    );
   }
   return res.body.data.id;
 }
 
-export async function publishVideo(cookie: string, artistId: string, title: string): Promise<string> {
+export async function publishVideo(
+  cookie: string,
+  artistId: string,
+  title: string,
+): Promise<string> {
   const app = await api();
   const res = await app
     .post(`/api/v1/artists/${artistId}/videos`)
     .set("Cookie", cookie)
-    .send({ title, videoUrl: "https://example.com/video.mp4", isDownloadable: true });
+    .send({
+      title,
+      videoUrl: "https://example.com/video.mp4",
+      isDownloadable: true,
+    });
   if (res.status !== 201) {
-    throw new Error(`Failed to publish video: ${res.status} ${JSON.stringify(res.body)}`);
+    throw new Error(
+      `Failed to publish video: ${res.status} ${JSON.stringify(res.body)}`,
+    );
   }
   return res.body.data.id;
 }

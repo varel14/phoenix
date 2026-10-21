@@ -27,6 +27,21 @@ const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", 
 
 const DIGITAL_MIME_TYPES = new Set(["application/pdf", "application/epub+zip", "application/zip", ...AUDIO_MIME_TYPES]);
 
+/** Generic documents allowed as chat FILE messages. */
+const DOCUMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/zip",
+  "application/x-zip-compressed",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+
 const FILE_EXTENSIONS: Record<string, string> = {
   "audio/aac": ".aac",
   "audio/mp4": ".m4a",
@@ -50,14 +65,23 @@ const FILE_EXTENSIONS: Record<string, string> = {
   "application/pdf": ".pdf",
   "application/epub+zip": ".epub",
   "application/zip": ".zip",
+  "application/x-zip-compressed": ".zip",
+  "text/plain": ".txt",
+  "text/csv": ".csv",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/vnd.ms-powerpoint": ".ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
 };
 
-const ALLOWED_KINDS = new Set(["voice", "audio", "video", "image", "digital"]);
+const ALLOWED_KINDS = new Set(["voice", "audio", "video", "image", "file", "digital"]);
 
 function resolveKind(req: Request): string {
   const kind = (req.query["kind"] ?? req.body?.kind) as string | undefined;
   if (!kind || !ALLOWED_KINDS.has(kind)) {
-    throw AppError.badRequest("kind must be one of: voice, audio, video, image, digital");
+    throw AppError.badRequest("kind must be one of: voice, audio, video, image, file, digital");
   }
   return kind;
 }
@@ -91,6 +115,10 @@ const upload = multer({
       }
       if (kind === "image" && !IMAGE_MIME_TYPES.has(file.mimetype)) {
         cb(AppError.unprocessable("Only image files are allowed"));
+        return;
+      }
+      if (kind === "file" && !DOCUMENT_MIME_TYPES.has(file.mimetype)) {
+        cb(AppError.unprocessable("This file type is not allowed"));
         return;
       }
       if (kind === "digital" && !DIGITAL_MIME_TYPES.has(file.mimetype)) {

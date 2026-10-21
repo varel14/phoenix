@@ -7,6 +7,7 @@ export function generateReference(prefix: string): string {
 }
 
 export const PAYMENT_REFERENCE_PREFIX = "PHX-PAY";
+export const WALLET_REFERENCE_PREFIX = "PHX-WAL";
 export const ORDER_REFERENCE_PREFIX = "PHX-CMD";
 export const SUBSCRIPTION_REFERENCE_PREFIX = "CHY-ABO";
 export const ROYALTY_REFERENCE_PREFIX = "CHY-RED";

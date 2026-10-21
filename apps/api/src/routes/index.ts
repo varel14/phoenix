@@ -16,6 +16,7 @@ import { paymentRouter } from "./payment.routes.js";
 import { productRouter, productCategoryRouter } from "./product.routes.js";
 import { cartRouter } from "./cart.routes.js";
 import { orderRouter } from "./order.routes.js";
+import { walletRouter } from "./wallet.routes.js";
 
 export const apiRouter = Router();
 
@@ -38,3 +39,4 @@ apiRouter.use("/products", productRouter);
 apiRouter.use("/product-categories", productCategoryRouter);
 apiRouter.use("/cart", cartRouter);
 apiRouter.use("/orders", orderRouter);
+apiRouter.use("/wallet", walletRouter);

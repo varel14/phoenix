@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -13,7 +14,7 @@ import { env } from "../config/env.js";
 import { digitalFilesDir, uploadsDir } from "./storage.js";
 
 /** Kinds accepted by POST /api/v1/uploads (mirrors upload.routes.ts). */
-export type UploadKind = "voice" | "audio" | "video" | "image" | "digital";
+export type UploadKind = "voice" | "audio" | "video" | "image" | "file" | "digital";
 
 /** Bucket folder per upload kind. */
 const KIND_FOLDER: Record<UploadKind, string> = {
@@ -21,11 +22,12 @@ const KIND_FOLDER: Record<UploadKind, string> = {
   audio: "audio",
   video: "video",
   image: "images",
+  file: "files",
   digital: "digital",
 };
 
 /** Kinds whose objects are publicly readable (digital stays protected). */
-const PUBLIC_KINDS = new Set<UploadKind>(["voice", "audio", "video", "image"]);
+const PUBLIC_KINDS = new Set<UploadKind>(["voice", "audio", "video", "image", "file"]);
 
 let client: S3Client | null = null;
 
@@ -138,6 +140,29 @@ export async function presignDigitalDownload(storageKey: string, fileName: strin
 /** Test hook — injects a preconfigured S3 client (used by the unit tests). */
 export function setR2ClientForTests(injected: S3Client | null): void {
   client = injected;
+}
+
+/**
+ * Seed/demo support — idempotently copies a local file into the bucket at
+ * `key`. Existing objects are left untouched so reseeding never re-uploads.
+ * Callers should gate on isR2Configured() first.
+ */
+export async function ensureBucketFile(key: string, localPath: string, contentType: string): Promise<void> {
+  try {
+    await r2Client().send(new HeadObjectCommand({ Bucket: env.R2_BUCKET!, Key: key }));
+    return;
+  } catch {
+    // Object absent — fall through and upload it.
+  }
+  await new Upload({
+    client: r2Client(),
+    params: {
+      Bucket: env.R2_BUCKET!,
+      Key: key,
+      ContentType: contentType,
+      Body: createReadStream(localPath),
+    },
+  }).done();
 }
 
 export { PutObjectCommand, GetObjectCommand, DeleteObjectCommand };

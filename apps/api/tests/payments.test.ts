@@ -56,6 +56,8 @@ describe("Payments", () => {
     const detail = await app.get(`/api/v1/payment-services/${service.id}`);
     expect(detail.status).toBe(200);
     expect(detail.body.data.fields).toHaveLength(2);
+    // The mobile detail screen renders service.category.name.
+    expect(detail.body.data.category.name).toBe("Frais scolaires");
   });
 
   it("creates a pending transaction with validated fields", async () => {
@@ -193,5 +195,35 @@ describe("Payments", () => {
     const res = await app.get("/api/v1/payments").set("Cookie", user.cookie);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it("dev-confirms a pending transaction by reference, owner only", async () => {
+    const { service } = await seedPaymentService();
+    const alice = await createUser("Alice", uniqueEmail("alice-devconf"));
+    const bob = await createUser("Bob", uniqueEmail("bob-devconf"));
+    const app = await api();
+
+    const created = await app
+      .post("/api/v1/payments")
+      .set("Cookie", alice.cookie)
+      .send({ serviceId: service.id, fields: { studentName: "A", studentClass: "B" } });
+    const reference = created.body.data.transaction.reference as string;
+
+    // Another user's reference → 404, and the transaction stays pending.
+    const forbidden = await app.post(`/api/v1/payments/${reference}/dev-confirm`).set("Cookie", bob.cookie);
+    expect(forbidden.status).toBe(404);
+    const stillPending = await prisma.paymentTransaction.findUnique({ where: { reference } });
+    expect(stillPending?.status).toBe("PENDING");
+
+    // The owner confirms through the dev pipeline → SUCCESS + receipt.
+    const confirmed = await app.post(`/api/v1/payments/${reference}/dev-confirm`).set("Cookie", alice.cookie);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.data.transaction.status).toBe("SUCCESS");
+    expect(confirmed.body.data.duplicate).toBe(false);
+
+    // Replaying is idempotent.
+    const replay = await app.post(`/api/v1/payments/${reference}/dev-confirm`).set("Cookie", alice.cookie);
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.duplicate).toBe(true);
   });
 });

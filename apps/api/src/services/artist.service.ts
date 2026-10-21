@@ -1,5 +1,9 @@
 import { Prisma } from "./../generated/prisma/client.js";
-import { artistRepository, type ArtistDetail, type ArtistWithCounts } from "../repositories/artist.repository.js";
+import {
+  artistRepository,
+  type ArtistDetail,
+  type ArtistWithCounts,
+} from "../repositories/artist.repository.js";
 import { followRepository } from "../repositories/follow.repository.js";
 import { songRepository } from "../repositories/song.repository.js";
 import { videoRepository } from "../repositories/video.repository.js";
@@ -9,9 +13,18 @@ import { pruneUndefined } from "../lib/prune.js";
 import { buildPagination, type PaginationMeta } from "../lib/responses.js";
 import type { SongWithArtist } from "../types/media.js";
 import type { VideoWithArtist } from "../types/media.js";
-import type { CreateArtistBody, UpdateArtistBody } from "../validators/artist.schema.js";
-import type { CreateSongBody, UpdateSongBody } from "../validators/song.schema.js";
-import type { CreateVideoBody, UpdateVideoBody } from "../validators/video.schema.js";
+import type {
+  CreateArtistBody,
+  UpdateArtistBody,
+} from "../validators/artist.schema.js";
+import type {
+  CreateSongBody,
+  UpdateSongBody,
+} from "../validators/song.schema.js";
+import type {
+  CreateVideoBody,
+  UpdateVideoBody,
+} from "../validators/video.schema.js";
 
 export interface ArtistStats {
   /** Total song plays (legacy field). */
@@ -43,6 +56,23 @@ export interface ArtistStats {
   }>;
   /** One entry per day for the last 30 days (inclusive of today). */
   daily: Array<{ date: string; plays: number; views: number }>;
+  /** Distinct listeners across all songs (lifetime, from playback events). */
+  uniqueListeners: number;
+  /** Money earned from paid song downloads (1 FCFA each), in XOF. */
+  downloadRevenue: number;
+  /** Every published song with its activity/popularity breakdown. */
+  songStats: Array<{
+    id: string;
+    title: string;
+    thumbnailUrl: string | null;
+    durationSec: number | null;
+    publishedAt: Date;
+    playCount: number;
+    downloadCount: number;
+    favorites: number;
+    uniqueListeners: number;
+    plays30d: number;
+  }>;
 }
 
 /** Ensures the artist exists AND belongs to the acting user. */
@@ -57,15 +87,25 @@ async function requireOwnedArtist(artistId: string, userId: string) {
 }
 
 export const artistService = {
-  async list(query: { q?: string | undefined; page: number; limit: number }): Promise<{ artists: ArtistWithCounts[]; pagination: PaginationMeta }> {
+  async list(query: {
+    q?: string | undefined;
+    page: number;
+    limit: number;
+  }): Promise<{ artists: ArtistWithCounts[]; pagination: PaginationMeta }> {
     const [artists, total] = await Promise.all([
       artistRepository.findMany(query),
       artistRepository.countMany(query.q),
     ]);
-    return { artists, pagination: buildPagination(query.page, query.limit, total) };
+    return {
+      artists,
+      pagination: buildPagination(query.page, query.limit, total),
+    };
   },
 
-  async getById(id: string, userId?: string | undefined): Promise<ArtistDetail & { isFollowing?: boolean }> {
+  async getById(
+    id: string,
+    userId?: string | undefined,
+  ): Promise<ArtistDetail & { isFollowing?: boolean }> {
     const artist = await artistRepository.findById(id);
     if (!artist) throw AppError.notFound("Artist");
     if (userId) {
@@ -93,19 +133,32 @@ export const artistService = {
 
   // -- Publishing ------------------------------------------------------------
 
-  async publishSong(artistId: string, userId: string, body: CreateSongBody): Promise<SongWithArtist> {
+  async publishSong(
+    artistId: string,
+    userId: string,
+    body: CreateSongBody,
+  ): Promise<SongWithArtist> {
     await requireOwnedArtist(artistId, userId);
     return songRepository.create(artistId, pruneUndefined(body));
   },
 
-  async updateSong(artistId: string, songId: string, userId: string, body: UpdateSongBody): Promise<SongWithArtist> {
+  async updateSong(
+    artistId: string,
+    songId: string,
+    userId: string,
+    body: UpdateSongBody,
+  ): Promise<SongWithArtist> {
     await requireOwnedArtist(artistId, userId);
     const song = await songRepository.findByIdForArtist(songId);
     if (!song || song.artistId !== artistId) throw AppError.notFound("Song");
     return songRepository.update(songId, pruneUndefined(body));
   },
 
-  async removeSong(artistId: string, songId: string, userId: string): Promise<void> {
+  async removeSong(
+    artistId: string,
+    songId: string,
+    userId: string,
+  ): Promise<void> {
     await requireOwnedArtist(artistId, userId);
     const song = await songRepository.findByIdForArtist(songId);
     if (!song || song.artistId !== artistId) throw AppError.notFound("Song");
@@ -114,19 +167,32 @@ export const artistService = {
     if (song.storageKey) await deleteStoredObject(song.storageKey);
   },
 
-  async publishVideo(artistId: string, userId: string, body: CreateVideoBody): Promise<VideoWithArtist> {
+  async publishVideo(
+    artistId: string,
+    userId: string,
+    body: CreateVideoBody,
+  ): Promise<VideoWithArtist> {
     await requireOwnedArtist(artistId, userId);
     return videoRepository.create(artistId, pruneUndefined(body));
   },
 
-  async updateVideo(artistId: string, videoId: string, userId: string, body: UpdateVideoBody): Promise<VideoWithArtist> {
+  async updateVideo(
+    artistId: string,
+    videoId: string,
+    userId: string,
+    body: UpdateVideoBody,
+  ): Promise<VideoWithArtist> {
     await requireOwnedArtist(artistId, userId);
     const video = await videoRepository.findByIdRef(videoId);
     if (!video || video.artistId !== artistId) throw AppError.notFound("Video");
     return videoRepository.update(videoId, pruneUndefined(body));
   },
 
-  async removeVideo(artistId: string, videoId: string, userId: string): Promise<void> {
+  async removeVideo(
+    artistId: string,
+    videoId: string,
+    userId: string,
+  ): Promise<void> {
     await requireOwnedArtist(artistId, userId);
     const video = await videoRepository.findByIdRef(videoId);
     if (!video || video.artistId !== artistId) throw AppError.notFound("Video");
@@ -136,7 +202,11 @@ export const artistService = {
 
   // -- Catalog listings ------------------------------------------------------
 
-  async listArtistSongs(artistId: string, page: number, limit: number): Promise<{ songs: SongWithArtist[]; pagination: PaginationMeta }> {
+  async listArtistSongs(
+    artistId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ songs: SongWithArtist[]; pagination: PaginationMeta }> {
     const artist = await artistRepository.findByIdRef(artistId);
     if (!artist) throw AppError.notFound("Artist");
     const [songs, total] = await Promise.all([
@@ -146,7 +216,11 @@ export const artistService = {
     return { songs, pagination: buildPagination(page, limit, total) };
   },
 
-  async listArtistVideos(artistId: string, page: number, limit: number): Promise<{ videos: VideoWithArtist[]; pagination: PaginationMeta }> {
+  async listArtistVideos(
+    artistId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ videos: VideoWithArtist[]; pagination: PaginationMeta }> {
     const artist = await artistRepository.findByIdRef(artistId);
     if (!artist) throw AppError.notFound("Artist");
     const [videos, total] = await Promise.all([
@@ -167,7 +241,10 @@ export const artistService = {
     try {
       await followRepository.follow(userId, artistId);
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
         throw AppError.conflict("You are already following this artist");
       }
       throw error;

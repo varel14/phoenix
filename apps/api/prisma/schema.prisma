@@ -132,6 +132,18 @@ enum PaymentTransactionStatus {
   REFUNDED
 }
 
+enum WalletTransactionType {
+  TOPUP
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 enum ProductType {
   PHYSICAL
   DIGITAL
@@ -180,6 +192,8 @@ model user {
   paymentTransactions PaymentTransaction[]
   orders         Order[]
   cart           Cart?
+  wallet         Wallet?
+  walletCounterpartyEntries WalletTransaction[] @relation("WalletCounterparty")
   prayers        Prayer[]
   prayerFavorites PrayerFavorite[]
   sermons        Sermon[]
@@ -700,6 +714,49 @@ model PaymentReceipt {
   transaction PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
   @@map("payment_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Wallet — balance, top-ups and peer-to-peer transfers
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id        String  @id @default(uuid())
+  userId    String  @unique @map("user_id")
+  balance   Int     @default(0)
+  currency  String  @default("XOF")
+  isActive  Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         user                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id             String                  @id @default(uuid())
+  walletId       String                  @map("wallet_id")
+  type           WalletTransactionType
+  status         WalletTransactionStatus @default(PENDING)
+  amount         Int
+  balanceAfter   Int?                    @map("balance_after")
+  currency       String                  @default("XOF")
+  reference      String                  @unique
+  transferRef    String?                 @map("transfer_ref")
+  note           String?
+  counterpartyId String?                 @map("counterparty_id")
+  metadata       Json?
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  wallet       Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  counterparty user?  @relation("WalletCounterparty", fields: [counterpartyId], references: [id], onDelete: SetNull)
+
+  @@index([walletId, createdAt])
+  @@index([transferRef])
+  @@map("wallet_transactions")
 }
 
 // ---------------------------------------------------------------------------

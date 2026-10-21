@@ -261,4 +261,11 @@ export const paymentService = {
     if (!transaction || transaction.userId !== userId) throw AppError.notFound("Payment transaction");
     return transaction;
   },
+
+  /** Same ownership rule as getTransactionForUser, keyed by the public reference. */
+  async getTransactionByReferenceForUser(userId: string, reference: string): Promise<PaymentTransactionWithRelations> {
+    const transaction = await paymentRepository.findTransactionByReference(reference);
+    if (!transaction || transaction.userId !== userId) throw AppError.notFound("Payment transaction");
+    return transaction;
+  },
 };

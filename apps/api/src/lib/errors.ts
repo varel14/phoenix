@@ -42,4 +42,8 @@ export class AppError extends Error {
   static unprocessable(message = "Request could not be processed", details?: unknown) {
     return new AppError(422, "UNPROCESSABLE", message, details);
   }
+
+  static internal(message = "Internal server error") {
+    return new AppError(500, "INTERNAL_ERROR", message);
+  }
 }

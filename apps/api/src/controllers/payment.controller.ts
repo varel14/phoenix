@@ -6,7 +6,7 @@ import { buildPagination, sendPaginated, sendSuccess } from "../lib/responses.js
 import { AppError } from "../lib/errors.js";
 import { env } from "../config/env.js";
 import { verifyWebhookSignature } from "../lib/webhook-signature.js";
-import { paymentWebhookBodySchema } from "../validators/payment.schema.js";
+import { paymentWebhookBodySchema, referenceParamsSchema } from "../validators/payment.schema.js";
 import { validatedBody, validatedParams, validatedQuery } from "../middleware/validate.js";
 import type { AuthenticatedUser } from "../types/express.d.js";
 import type {
@@ -21,8 +21,6 @@ function requireUser(req: Request): AuthenticatedUser {
   if (!req.user) throw AppError.unauthorized();
   return req.user;
 }
-
-const referenceParamsSchema = z.object({ reference: z.string().min(1).max(100) });
 
 export const paymentController = {
   async listCategories(_req: Request, res: Response) {
@@ -76,7 +74,7 @@ export const paymentController = {
     if (env.isProduction) throw AppError.notFound();
     const user = requireUser(req);
     const { reference } = validatedParams<z.infer<typeof referenceParamsSchema>>(req);
-    await paymentService.getTransactionForUser(user.id, reference);
+    await paymentService.getTransactionByReferenceForUser(user.id, reference);
     const provider = paymentProviderService.get(undefined);
     const result = await paymentService.confirmFromWebhook(provider.name, {
       reference,

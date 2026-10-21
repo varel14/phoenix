@@ -7,6 +7,7 @@ import {
   initiatePaymentBodySchema,
   listPaymentServicesQuerySchema,
   listPaymentsQuerySchema,
+  referenceParamsSchema,
 } from "../validators/payment.schema.js";
 
 /**
@@ -29,4 +30,8 @@ paymentRouter.use("/payments", requireAuth);
 paymentRouter.post("/payments", validate({ body: initiatePaymentBodySchema }), paymentController.initiate);
 paymentRouter.get("/payments", validate({ query: listPaymentsQuerySchema }), paymentController.list);
 paymentRouter.get("/payments/:id", validate({ params: idParamsSchema }), paymentController.detail);
-paymentRouter.post("/payments/:reference/dev-confirm", paymentController.devConfirm);
+paymentRouter.post(
+  "/payments/:reference/dev-confirm",
+  validate({ params: referenceParamsSchema }),
+  paymentController.devConfirm
+);

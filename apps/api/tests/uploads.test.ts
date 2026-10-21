@@ -98,4 +98,24 @@ describe("Uploads (song/video media)", () => {
     expect(res.body.data.kind).toBe("image");
     uploadedKeys.push(res.body.data.storageKey);
   });
+
+  it("accepts documents as chat file attachments", async () => {
+    const app = await api();
+    const pdf = Buffer.from("%PDF-1.4 chat attachment", "ascii");
+    const res = await app
+      .post("/api/v1/uploads?kind=file")
+      .set("Cookie", cookie)
+      .attach("file", pdf, { filename: "contrat.pdf", contentType: "application/pdf" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.kind).toBe("file");
+    expect(res.body.data.url).toMatch(/^\/uploads\/.+\.pdf$/);
+    uploadedKeys.push(res.body.data.storageKey);
+
+    // Images do not pass the document allow-list.
+    const rejected = await app
+      .post("/api/v1/uploads?kind=file")
+      .set("Cookie", cookie)
+      .attach("file", PNG_BYTES, { filename: "image.png", contentType: "image/png" });
+    expect(rejected.status).toBe(422);
+  });
 });

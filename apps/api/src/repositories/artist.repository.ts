@@ -1,6 +1,10 @@
 import type { Prisma } from "./../generated/prisma/client.js";
 import { prisma } from "../config/prisma.js";
-import { artistSummarySelect, songInclude, videoInclude } from "../types/media.js";
+import {
+  artistSummarySelect,
+  songInclude,
+  videoInclude,
+} from "../types/media.js";
 
 const artistDetailInclude = {
   songs: {
@@ -18,17 +22,29 @@ const artistDetailInclude = {
   },
 } satisfies Prisma.ArtistInclude;
 
-export type ArtistWithCounts = Prisma.ArtistGetPayload<{ include: { _count: { select: { songs: true; videos: true; followers: true } } } }>;
-export type ArtistDetail = Prisma.ArtistGetPayload<{ include: typeof artistDetailInclude }>;
+export type ArtistWithCounts = Prisma.ArtistGetPayload<{
+  include: {
+    _count: { select: { songs: true; videos: true; followers: true } };
+  };
+}>;
+export type ArtistDetail = Prisma.ArtistGetPayload<{
+  include: typeof artistDetailInclude;
+}>;
 
 export const artistRepository = {
-  async findMany(query: { q?: string | undefined; page: number; limit: number }): Promise<ArtistWithCounts[]> {
+  async findMany(query: {
+    q?: string | undefined;
+    page: number;
+    limit: number;
+  }): Promise<ArtistWithCounts[]> {
     const where: Prisma.ArtistWhereInput = query.q
       ? { name: { contains: query.q, mode: "insensitive" } }
       : {};
     return prisma.artist.findMany({
       where,
-      include: { _count: { select: { songs: true, videos: true, followers: true } } },
+      include: {
+        _count: { select: { songs: true, videos: true, followers: true } },
+      },
       orderBy: [{ isVerified: "desc" }, { createdAt: "desc" }],
       skip: (query.page - 1) * query.limit,
       take: query.limit,
@@ -36,7 +52,9 @@ export const artistRepository = {
   },
 
   async countMany(q?: string | undefined): Promise<number> {
-    const where: Prisma.ArtistWhereInput = q ? { name: { contains: q, mode: "insensitive" } } : {};
+    const where: Prisma.ArtistWhereInput = q
+      ? { name: { contains: q, mode: "insensitive" } }
+      : {};
     return prisma.artist.count({ where });
   },
 
@@ -74,34 +92,53 @@ export const artistRepository = {
   },
 
   async stats(id: string) {
-    const [songAgg, videoAgg, followers, songFavorites, videoFavorites, songCount, videoCount, topSongs, topVideos, daily] =
-      await Promise.all([
-        prisma.song.aggregate({ where: { artistId: id }, _sum: { playCount: true, downloadCount: true } }),
-        prisma.video.aggregate({ where: { artistId: id }, _sum: { viewCount: true, downloadCount: true } }),
-        prisma.artistFollow.count({ where: { artistId: id } }),
-        prisma.favorite.count({ where: { song: { artistId: id } } }),
-        prisma.favorite.count({ where: { video: { artistId: id } } }),
-        prisma.song.count({ where: { artistId: id } }),
-        prisma.video.count({ where: { artistId: id } }),
-        prisma.song.findMany({
-          where: { artistId: id },
-          orderBy: [{ playCount: "desc" }, { publishedAt: "desc" }],
-          take: 10,
-          select: {
-            id: true,
-            title: true,
-            playCount: true,
-            downloadCount: true,
-            _count: { select: { favorites: true } },
-          },
-        }),
-        prisma.video.findMany({
-          where: { artistId: id },
-          orderBy: [{ viewCount: "desc" }, { publishedAt: "desc" }],
-          take: 5,
-          select: { id: true, title: true, viewCount: true, downloadCount: true },
-        }),
-        prisma.$queryRaw<Array<{ date: string; plays: number; views: number }>>`
+    const [
+      songAgg,
+      videoAgg,
+      followers,
+      songFavorites,
+      videoFavorites,
+      songCount,
+      videoCount,
+      topSongs,
+      topVideos,
+      daily,
+      artistRow,
+      songRows,
+      listenerRows,
+    ] = await Promise.all([
+      prisma.song.aggregate({
+        where: { artistId: id },
+        _sum: { playCount: true, downloadCount: true },
+      }),
+      prisma.video.aggregate({
+        where: { artistId: id },
+        _sum: { viewCount: true, downloadCount: true },
+      }),
+      prisma.artistFollow.count({ where: { artistId: id } }),
+      prisma.favorite.count({ where: { song: { artistId: id } } }),
+      prisma.favorite.count({ where: { video: { artistId: id } } }),
+      prisma.song.count({ where: { artistId: id } }),
+      prisma.video.count({ where: { artistId: id } }),
+      prisma.song.findMany({
+        where: { artistId: id },
+        orderBy: [{ playCount: "desc" }, { publishedAt: "desc" }],
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          playCount: true,
+          downloadCount: true,
+          _count: { select: { favorites: true } },
+        },
+      }),
+      prisma.video.findMany({
+        where: { artistId: id },
+        orderBy: [{ viewCount: "desc" }, { publishedAt: "desc" }],
+        take: 5,
+        select: { id: true, title: true, viewCount: true, downloadCount: true },
+      }),
+      prisma.$queryRaw<Array<{ date: string; plays: number; views: number }>>`
           SELECT
             to_char(d, 'YYYY-MM-DD') AS date,
             CAST(COUNT(pe.id) FILTER (
@@ -118,12 +155,64 @@ export const artistRepository = {
           GROUP BY d
           ORDER BY d
         `,
-      ]);
+      prisma.artist.findUnique({ where: { id }, select: { userId: true } }),
+      // Full per-song table for the studio activity view.
+      prisma.song.findMany({
+        where: { artistId: id },
+        orderBy: [{ playCount: "desc" }, { publishedAt: "desc" }],
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          durationSec: true,
+          publishedAt: true,
+          playCount: true,
+          downloadCount: true,
+          _count: { select: { favorites: true } },
+        },
+      }),
+      // Distinct listeners per song (lifetime) + play counts over 30 days.
+      prisma.$queryRaw<
+        Array<{ songId: string; listeners: number; plays30d: number }>
+      >`
+          SELECT
+            s.id AS "songId",
+            CAST(COUNT(DISTINCT pe.user_id) AS int) AS listeners,
+            CAST(COUNT(pe.id) FILTER (
+              WHERE pe."occurredAt" >= NOW() - INTERVAL '30 days'
+            ) AS int) AS "plays30d"
+          FROM songs s
+          LEFT JOIN playback_events pe ON pe.song_id = s.id AND pe.event_type = 'PLAY'
+          WHERE s.artist_id = ${id}
+          GROUP BY s.id
+        `,
+    ]);
+
+    const revenue = artistRow
+      ? await prisma.walletTransaction.aggregate({
+          where: {
+            type: "TRANSFER_IN",
+            wallet: { userId: artistRow.userId },
+            metadata: { path: ["kind"], equals: "song-download" },
+          },
+          _sum: { amount: true },
+        })
+      : null;
+
+    const listenersBySong = new Map(
+      listenerRows.map((row) => [row.songId, row]),
+    );
+    const totalListeners = listenerRows.reduce(
+      (sum, row) => sum + row.listeners,
+      0,
+    );
+
     return {
       // Legacy totals (kept stable for existing clients)
       plays: songAgg._sum.playCount ?? 0,
       views: videoAgg._sum.viewCount ?? 0,
-      downloads: (songAgg._sum.downloadCount ?? 0) + (videoAgg._sum.downloadCount ?? 0),
+      downloads:
+        (songAgg._sum.downloadCount ?? 0) + (videoAgg._sum.downloadCount ?? 0),
       subscribers: followers,
       // Extended totals
       favorites: songFavorites + videoFavorites,
@@ -143,7 +232,26 @@ export const artistRepository = {
         viewCount: video.viewCount,
         downloadCount: video.downloadCount,
       })),
-      daily: daily.map((row) => ({ date: row.date, plays: Number(row.plays), views: Number(row.views) })),
+      daily: daily.map((row) => ({
+        date: row.date,
+        plays: Number(row.plays),
+        views: Number(row.views),
+      })),
+      // Song activity & popularity
+      uniqueListeners: totalListeners,
+      downloadRevenue: revenue?._sum.amount ?? 0,
+      songStats: songRows.map((song) => ({
+        id: song.id,
+        title: song.title,
+        thumbnailUrl: song.thumbnailUrl,
+        durationSec: song.durationSec,
+        publishedAt: song.publishedAt,
+        playCount: song.playCount,
+        downloadCount: song.downloadCount,
+        favorites: song._count.favorites,
+        uniqueListeners: listenersBySong.get(song.id)?.listeners ?? 0,
+        plays30d: listenersBySong.get(song.id)?.plays30d ?? 0,
+      })),
     };
   },
 

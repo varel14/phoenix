@@ -116,6 +116,54 @@ describe("SCL conversations", () => {
     expect(sent.body.data.attachment.storageKey).toBe("abc123.m4a");
   });
 
+  it("stores image and file messages with attachment metadata", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-media"));
+    const bob = await createUser("Bob", uniqueEmail("bob-media"));
+    const app = await api();
+    const conversation = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    const conversationId = conversation.body.data.id;
+
+    const photo = await app
+      .post(`/api/v1/conversations/${conversationId}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({
+        type: "IMAGE",
+        content: "Regarde ça",
+        attachment: {
+          url: "/uploads/img123.jpg",
+          storageKey: "img123.jpg",
+          mimeType: "image/jpeg",
+          fileSizeBytes: 120000,
+        },
+      });
+    expect(photo.status).toBe(201);
+    expect(photo.body.data.type).toBe("IMAGE");
+    expect(photo.body.data.content).toBe("Regarde ça");
+
+    const file = await app
+      .post(`/api/v1/conversations/${conversationId}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({
+        type: "FILE",
+        attachment: {
+          url: "/uploads/doc123.pdf",
+          storageKey: "doc123.pdf",
+          mimeType: "application/pdf",
+          name: "contrat.pdf",
+        },
+      });
+    expect(file.status).toBe(201);
+    expect(file.body.data.type).toBe("FILE");
+    expect(file.body.data.attachment.name).toBe("contrat.pdf");
+
+    // Attachment types without an attachment payload are rejected.
+    const invalid = await app
+      .post(`/api/v1/conversations/${conversationId}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({ type: "IMAGE" });
+    expect(invalid.status).toBe(400);
+  });
+
   it("creates call records with caller/recipient authorization", async () => {
     const alice = await createUser("Alice", uniqueEmail("alice-call"));
     const bob = await createUser("Bob", uniqueEmail("bob-call"));

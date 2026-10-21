@@ -26,7 +26,7 @@ export const messageAttachmentSchema = z.object({
 
 export const sendMessageBodySchema = z
   .object({
-    type: z.enum(["TEXT", "VOICE"]).default("TEXT"),
+    type: z.enum(["TEXT", "VOICE", "IMAGE", "VIDEO", "FILE"]).default("TEXT"),
     content: z.string().trim().min(1).max(4000).optional(),
     attachment: messageAttachmentSchema.optional(),
   })
@@ -40,6 +40,9 @@ export const sendMessageBodySchema = z
       } else if (!value.attachment.durationSec) {
         ctx.addIssue({ code: "custom", path: ["attachment", "durationSec"], message: "durationSec is required for VOICE messages" });
       }
+    }
+    if ((value.type === "IMAGE" || value.type === "VIDEO" || value.type === "FILE") && !value.attachment) {
+      ctx.addIssue({ code: "custom", path: ["attachment"], message: `attachment is required for ${value.type} messages` });
     }
   });
 

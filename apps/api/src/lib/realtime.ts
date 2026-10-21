@@ -147,7 +147,12 @@ export function initRealtime(
     socket.on(
       "conversation:message",
       async (
-        payload: { conversationId?: string; type?: "TEXT" | "VOICE"; content?: string; attachment?: unknown },
+        payload: {
+          conversationId?: string;
+          type?: "TEXT" | "VOICE" | "IMAGE" | "VIDEO" | "FILE";
+          content?: string;
+          attachment?: unknown;
+        },
         ack?: (res: AckResponse) => void,
       ) => {
         try {
@@ -182,7 +187,13 @@ export function initRealtime(
             const preview =
               message.type === "VOICE"
                 ? "Message vocal"
-                : (message.content ?? "").slice(0, 120) || "Nouveau message";
+                : message.type === "IMAGE"
+                  ? (message.content ? `Photo · ${message.content}` : "Photo")
+                  : message.type === "VIDEO"
+                    ? (message.content ? `Vidéo · ${message.content}` : "Vidéo")
+                    : message.type === "FILE"
+                      ? (message.attachment?.name ?? "Fichier")
+                      : (message.content ?? "").slice(0, 120) || "Nouveau message";
             void pushService.sendToUsers(offlineParticipantIds, {
               title: user.name,
               body: preview,

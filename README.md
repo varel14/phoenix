@@ -70,18 +70,24 @@ GET http://localhost:4000/health
 
 ## Demo accounts
 
-Created by `pnpm db:seed`. Password for all of them: `phoenix123`.
+Created by `pnpm db:seed`. Canonical login: `user@gmail.com` / `password` (auditeur) and `artist@gmail.com` / `password` (créateur). Secondary demo accounts use `phoenix123`.
 
 | Email | Role |
 |---|---|
-| `listener@phoenix.local` | Regular user (follows Aurora Waves) |
-| `aurora@phoenix.local` | Creator — Aurora Waves |
+| `user@gmail.com` | Regular user — the full test account (library, chats, orders, payments, ads, …) |
+| `artist@gmail.com` | Creator — Aurora Waves |
 | `solaris@phoenix.local` | Creator — The Solaris Band |
 | `celeste@phoenix.local` | Creator — Celeste Moreau |
 | `kaya@phoenix.local` | Creator — Kaya Sound System |
+| `nadia@phoenix.local`, `brickz@phoenix.local`, … (8 more creators) | Creator — extra catalog artists |
+| `marie@phoenix.local`, `david@phoenix.local`, `grace@phoenix.local`, `imran@phoenix.local` | Friends of the test user (chats, groups, calls) |
 
-The login screen lists these in dev builds (`__DEV__`). The seed also fills the
-Chuyassi Emmanuel Pay catalog (school fees, utilities, …), the boutique
+The seed fully stocks the test account: every user-scoped table has ≥ 10 rows
+for `user@gmail.com` (favorites, playlists, downloads, subscriptions,
+conversations, messages, calls, orders, transactions, prayers, sermons,
+sheet-music jobs, ad campaigns, …). Re-running `pnpm db:seed` wipes and
+rebuilds that data deterministically. The seed also fills the Chuyassi
+Emmanuel Pay catalog (school fees, utilities, …), the boutique
 categories/products and demo catalog media (SoundHelix MP3s, Google sample
 videos, local `/thumbnails` images).
 
@@ -115,9 +121,25 @@ which is disabled in production. WebRTC calls work device-to-device on the same
 network without extra setup; symmetric-NAT scenarios need the TURN settings in
 `apps/api/.env.example`.
 
-Manual smoke path: register or log in as `listener@phoenix.local` → play a
+Manual smoke path: register or log in as `user@gmail.com` → play a
 song → favorite it → subscribe on the Premium screen → download a track →
 airplane-mode playback → boutique add-to-cart → checkout → dev-confirm →
 orders screen → Pay flow → messages/voice note → call between two devices →
-studio (as `aurora@phoenix.local`) publish a song.
+studio (as `artist@gmail.com`) publish a song.
+
+## Deploying the API
+
+The API deploys to Google Cloud Run as the `phoenix-api` service — see
+[infra/gcp/README.md](infra/gcp/README.md). Short version, from the repo root:
+
+```sh
+CORS_ORIGIN="https://your-web-app.example.com" \
+DATABASE_URL="postgresql://…" \
+  ./infra/gcp/deploy.sh
+```
+
+The script builds the image (Cloud Build + `apps/api/Dockerfile`), stores
+secrets in Secret Manager and wires `CORS_ORIGIN` through all three
+CORS-sensitive layers (Express `cors`, Socket.IO, better-auth) — the runbook
+explains what belongs in `CORS_ORIGIN` and how to verify it with curl.
 

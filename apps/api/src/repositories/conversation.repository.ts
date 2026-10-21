@@ -143,7 +143,11 @@ export const messageRepository = {
   async create(
     conversationId: string,
     senderId: string,
-    data: { type: "TEXT" | "VOICE"; content?: string | undefined; attachment?: MessageAttachmentInput | undefined },
+    data: {
+      type: "TEXT" | "VOICE" | "IMAGE" | "VIDEO" | "FILE";
+      content?: string | undefined;
+      attachment?: MessageAttachmentInput | undefined;
+    },
   ): Promise<MessageWithRelations> {
     const message = await prisma.message.create({
       data: {
