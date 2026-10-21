@@ -27,7 +27,7 @@
         "MODIFY_AUDIO_SETTINGS"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#0A0914",
+        "backgroundColor": "#0A0A10",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -47,12 +47,12 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#F7F5FC",
+          "backgroundColor": "#F6F5FB",
           "dark": {
             "image": "./assets/splash-icon.png",
             "imageWidth": 180,
             "resizeMode": "contain",
-            "backgroundColor": "#0A0914"
+            "backgroundColor": "#0A0A10"
           }
         }
       ]
