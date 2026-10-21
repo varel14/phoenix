@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,6 +17,7 @@ import {
   useWallet,
   useWalletRecipients,
 } from "@/hooks/use-wallet";
+import { useFollowUser, useUnfollowUser } from "@/hooks/use-follows";
 import {
   AppText,
   Button,
@@ -25,15 +27,75 @@ import {
   PressableScale,
 } from "@/components/ui";
 import { UserAvatar } from "@/components/chat/user-avatar";
-import { Chip, FadeIn, QuickRecipient, SuccessHero } from "@/components/wallet-ui";
+import {
+  AmountKeyboard,
+  Chip,
+  FadeIn,
+  FollowButton,
+  PayBackdrop,
+  PeerFlow,
+  QuickRecipient,
+  SuccessHero,
+  SummaryRow,
+} from "@/components/wallet-ui";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
+import { useAuthStore } from "@/stores/auth-store";
 import { formatAmount, formatMoney } from "@/utils/money";
-import type { WalletRecipient } from "@/types/wallet";
+import type { WalletRecipient, WalletTransaction } from "@/types/wallet";
 
 const QUICK_AMOUNTS = [1_000, 2_000, 5_000, 10_000];
+const MAX_DIGITS = 9;
 
 type Stage = "recipient" | "amount";
+
+/** Blinking caret shown after the amount while it is being typed. */
+function AmountCaret() {
+  const { colors } = useTheme();
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 480,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 480,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={{
+        width: 2,
+        height: 36,
+        borderRadius: 1,
+        backgroundColor: colors.primary,
+        opacity,
+        marginLeft: 4,
+      }}
+    />
+  );
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function SendScreen() {
   const { colors } = useTheme();
@@ -43,16 +105,23 @@ export default function SendScreen() {
     recipientName?: string;
     recipientImage?: string;
   }>();
+  const sessionUser = useAuthStore((state) => state.user);
   const walletQuery = useWallet();
   const transfer = useTransfer();
+  const followUser = useFollowUser();
+  const unfollowUser = useUnfollowUser();
+  const [followBusyId, setFollowBusyId] = useState<string | null>(null);
 
   // Deep link from the "Envoi rapide" rail: recipient is preselected.
+  // Follow flags are unknown here — they are never rendered in this stage.
   const linkedRecipient =
     params.recipientId && params.recipientName
       ? {
           id: params.recipientId,
           name: params.recipientName,
           image: params.recipientImage || null,
+          isFollowing: false,
+          isMutual: false,
         }
       : null;
 
@@ -66,12 +135,13 @@ export default function SendScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [amountInput, setAmountInput] = useState("");
   const [note, setNote] = useState("");
+  const [noteFocused, setNoteFocused] = useState(false);
   const [result, setResult] = useState<{
-    transactionBalance: number;
-    amount: number;
-    name: string;
+    transaction: WalletTransaction;
+    walletBalance: number;
+    recipient: WalletRecipient;
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ message: string } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -93,11 +163,28 @@ export default function SendScreen() {
     wallet != null &&
     amount > wallet.balance;
 
-  /** Keeps thousand separators while typing; stores the formatted value. */
-  function handleAmountChange(text: string) {
-    const digits = text.replace(/\D/g, "").slice(0, 9);
+  /** Custom keypad entry: appends digits and keeps thousand separators. */
+  function appendDigits(input: string) {
+    const digits = (amountInput.replace(/\D/g, "") + input).slice(
+      0,
+      MAX_DIGITS,
+    );
     setAmountInput(digits ? formatAmount(Number.parseInt(digits, 10)) : "");
-    setError(null);
+  }
+
+  function backspaceAmount() {
+    const digits = amountInput.replace(/\D/g, "").slice(0, -1);
+    setAmountInput(digits ? formatAmount(Number.parseInt(digits, 10)) : "");
+  }
+
+  /** Follow/unfollow straight from the contact list; caches update locally. */
+  function toggleFollow(candidate: WalletRecipient) {
+    if (followBusyId) return;
+    setFollowBusyId(candidate.id);
+    const mutation = candidate.isFollowing ? unfollowUser : followUser;
+    mutation.mutate(candidate.id, {
+      onSettled: () => setFollowBusyId(null),
+    });
   }
 
   function selectRecipient(candidate: WalletRecipient) {
@@ -107,7 +194,7 @@ export default function SendScreen() {
 
   function sendNow() {
     if (!recipient || !amountValid || !wallet) return;
-    setError(null);
+    setFailure(null);
     transfer.mutate(
       {
         recipientId: recipient.id,
@@ -117,17 +204,26 @@ export default function SendScreen() {
       {
         onSuccess: (data) => {
           setResult({
-            transactionBalance: data.wallet.balance,
-            amount: data.transaction.amount,
-            name: recipient.name,
+            transaction: data.transaction,
+            walletBalance: data.wallet.balance,
+            recipient,
           });
         },
-        onError: (mutationError) => setError((mutationError as Error).message),
+        onError: (mutationError) =>
+          setFailure({ message: (mutationError as Error).message }),
       },
     );
   }
 
   const goBack = () => {
+    if (failure) {
+      setFailure(null);
+      return;
+    }
+    if (result) {
+      router.replace("/pay");
+      return;
+    }
     if (stage === "amount" && !linkedRecipient) {
       setStage("recipient");
       return;
@@ -148,62 +244,169 @@ export default function SendScreen() {
         borderBottomColor: colors.border,
       }}
     >
-      <IconButton icon="chevron-back" onPress={goBack} accessibilityLabel="Retour" />
-      <View style={{ flex: 1, paddingRight: 40 }}>
-        <AppText variant="subheading">
-          {result
-            ? "Argent envoyé"
+      <IconButton
+        icon="chevron-back"
+        onPress={goBack}
+        accessibilityLabel="Retour"
+      />
+      <AppText
+        variant="subheading"
+        style={{ flex: 1, textAlign: "center", marginRight: 40 }}
+        numberOfLines={1}
+      >
+        {result
+          ? "Argent envoyé"
+          : failure
+            ? "Transfert échoué"
             : stage === "recipient"
-              ? "Envoyer de l'argent"
+              ? "Choisissez un contact"
               : "Montant à envoyer"}
-        </AppText>
-        <AppText variant="small" color={colors.textFaint}>
-          {wallet
-            ? `Solde : ${formatMoney(wallet.balance, wallet.currency)}`
-            : "À un contact"}
-        </AppText>
-      </View>
+      </AppText>
     </View>
   );
 
   if (result) {
+    const { transaction, walletBalance } = result;
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <PayBackdrop />
         {header}
         <ScrollView
           contentContainerStyle={{
             padding: spacing.lg,
             gap: spacing.xl,
             paddingTop: spacing.xxl,
+            paddingBottom: 48,
           }}
         >
-          <SuccessHero
-            title="Argent envoyé"
-            amountText={`−${formatMoney(result.amount, wallet?.currency)}`}
-            amountColor={colors.text}
-            message={`${result.name} a bien reçu votre envoi.\nNouveau solde : ${formatMoney(
-              result.transactionBalance,
-              wallet?.currency,
-            )}`}
-          />
-          <View style={{ gap: spacing.md, marginTop: spacing.md }}>
-            <Button
-              label="Envoyer à nouveau"
-              variant="secondary"
-              icon="paper-plane-outline"
-              onPress={() => {
-                setResult(null);
-                setAmountInput("");
-                setNote("");
-                setError(null);
-                setStage("amount");
-              }}
+          <FadeIn>
+            <SuccessHero
+              title="Transfert réussi"
+              amountText={`−${formatMoney(transaction.amount, transaction.currency)}`}
+              amountColor={colors.text}
             />
+          </FadeIn>
+
+          {/* Transaction receipt — both peers, amount context and references */}
+          <FadeIn delay={80}>
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: radii.xl,
+                padding: spacing.xl,
+                gap: spacing.lg,
+              }}
+            >
+              <PeerFlow
+                from={{
+                  id: sessionUser?.id ?? "me",
+                  name: sessionUser?.name ?? "Moi",
+                  image: sessionUser?.image ?? null,
+                }}
+                to={result.recipient}
+              />
+              <View
+                style={{
+                  height: StyleSheet.hairlineWidth,
+                  backgroundColor: colors.hairline,
+                }}
+              />
+              <View style={{ gap: spacing.md }}>
+                <SummaryRow
+                  label="Date"
+                  value={formatDateTime(transaction.createdAt)}
+                />
+                {transaction.note ? (
+                  <SummaryRow label="Note" value={transaction.note} />
+                ) : null}
+                <SummaryRow
+                  label="Nouveau solde"
+                  value={formatMoney(walletBalance, transaction.currency)}
+                />
+                <SummaryRow label="Référence" value={transaction.reference} />
+              </View>
+            </View>
+          </FadeIn>
+
+          <FadeIn delay={140}>
             <Button
               label="Retour au portefeuille"
               onPress={() => router.replace("/pay")}
             />
-          </View>
+          </FadeIn>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (failure) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <PayBackdrop />
+        {header}
+        <ScrollView
+          contentContainerStyle={{
+            padding: spacing.lg,
+            gap: spacing.xl,
+            paddingTop: spacing.xxl,
+            paddingBottom: 48,
+          }}
+        >
+          <FadeIn>
+            <SuccessHero
+              tone="danger"
+              title="Transfert échoué"
+              amountText={formatMoney(
+                Number.isFinite(amount) ? amount : 0,
+                wallet?.currency,
+              )}
+              amountColor={colors.text}
+              message={failure.message}
+            />
+          </FadeIn>
+
+          {/* Who was involved in the failed attempt */}
+          {recipient ? (
+            <FadeIn delay={80}>
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: radii.xl,
+                  padding: spacing.xl,
+                }}
+              >
+                <PeerFlow
+                  from={{
+                    id: sessionUser?.id ?? "me",
+                    name: sessionUser?.name ?? "Moi",
+                    image: sessionUser?.image ?? null,
+                  }}
+                  to={recipient}
+                />
+              </View>
+            </FadeIn>
+          ) : null}
+
+          <FadeIn delay={140}>
+            <View style={{ gap: spacing.md }}>
+              <Button
+                label="Réessayer"
+                icon="refresh-outline"
+                onPress={sendNow}
+                loading={transfer.isPending}
+              />
+              <Button
+                label="Modifier le montant"
+                variant="secondary"
+                onPress={() => setFailure(null)}
+              />
+              <Button
+                label="Retour au portefeuille"
+                variant="ghost"
+                onPress={() => router.replace("/pay")}
+              />
+            </View>
+          </FadeIn>
         </ScrollView>
       </View>
     );
@@ -215,6 +418,7 @@ export default function SendScreen() {
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <PayBackdrop />
         {header}
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -229,6 +433,10 @@ export default function SendScreen() {
               placeholder="Rechercher un contact…"
               value={search}
               onChangeText={setSearch}
+              style={{
+                backgroundColor: colors.surfaceHighlight,
+                borderWidth: 0,
+              }}
             />
           </FadeIn>
 
@@ -256,6 +464,7 @@ export default function SendScreen() {
                       id={candidate.id}
                       name={candidate.name}
                       image={candidate.image}
+                      size={38}
                       onPress={() => selectRecipient(candidate)}
                     />
                   ))}
@@ -302,23 +511,37 @@ export default function SendScreen() {
                           padding: spacing.md,
                           backgroundColor: colors.surface,
                           borderRadius: radii.xl,
-                          borderWidth: StyleSheet.hairlineWidth,
-                          borderColor: colors.hairline,
                         }}
                       >
-                        <UserAvatar user={candidate} size={44} />
-                        <AppText
-                          variant="subheading"
-                          numberOfLines={1}
-                          style={{ flex: 1 }}
-                        >
-                          {candidate.name}
-                        </AppText>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={18}
-                          color={colors.textFaint}
-                        />
+                        <UserAvatar user={candidate} size={36} />
+                        <View style={{ flex: 1, gap: 1 }}>
+                          <AppText variant="subheading" numberOfLines={1}>
+                            {candidate.name}
+                          </AppText>
+                          {candidate.isMutual ? (
+                            <AppText variant="small" color={colors.success}>
+                              Suivi mutuel
+                            </AppText>
+                          ) : candidate.isFollowing ? (
+                            <AppText variant="small" color={colors.textFaint}>
+                              Suivi
+                            </AppText>
+                          ) : null}
+                        </View>
+                        {!candidate.isFollowing ? (
+                          <FollowButton
+                            isFollowing={false}
+                            isMutual={false}
+                            loading={followBusyId === candidate.id}
+                            onPress={() => toggleFollow(candidate)}
+                          />
+                        ) : (
+                          <Ionicons
+                            name="chevron-forward"
+                            size={18}
+                            color={colors.textFaint}
+                          />
+                        )}
                       </View>
                     </PressableScale>
                   ))}
@@ -336,38 +559,33 @@ export default function SendScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <PayBackdrop />
       {header}
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           padding: spacing.lg,
           gap: spacing.xl,
-          paddingBottom: 48,
+          paddingBottom: 24,
         }}
       >
-        {/* Selected recipient */}
+        {/* Sender → recipient, mockup style */}
         <FadeIn>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.md,
-              padding: spacing.md,
-              backgroundColor: colors.surface,
-              borderRadius: radii.xl,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: colors.hairline,
-            }}
-          >
-            {recipient ? <UserAvatar user={recipient} size={44} /> : null}
-            <View style={{ flex: 1 }}>
-              <AppText variant="subheading" numberOfLines={1}>
-                {recipient?.name}
-              </AppText>
-              <AppText variant="small" color={colors.textFaint}>
-                Destinataire
-              </AppText>
-            </View>
+          <View style={{ gap: spacing.xs, alignItems: "center" }}>
+            <PeerFlow
+              from={{
+                id: sessionUser?.id ?? "me",
+                name: sessionUser?.name ?? "Moi",
+                image: sessionUser?.image ?? null,
+              }}
+              to={
+                recipient ?? {
+                  id: "",
+                  name: "Destinataire",
+                  image: null,
+                }
+              }
+            />
             {!linkedRecipient ? (
               <Pressable
                 accessibilityRole="button"
@@ -379,33 +597,47 @@ export default function SendScreen() {
                   color={colors.accent}
                   style={{ fontWeight: "700" }}
                 >
-                  Modifier
+                  Modifier le destinataire
                 </AppText>
               </Pressable>
             ) : null}
           </View>
         </FadeIn>
 
-        {/* Amount entry */}
+        {/* Amount entry — custom keypad below, display here */}
         <FadeIn delay={60}>
           <View style={{ alignItems: "center", gap: spacing.sm }}>
-            <TextInput
-              value={amountInput}
-              onChangeText={handleAmountChange}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textFaint}
-              textAlign="center"
+            <View
               style={{
-                fontSize: 40,
-                fontWeight: "800",
-                letterSpacing: -1,
-                color: colors.text,
-                fontVariant: ["tabular-nums"],
-                minHeight: 52,
-                width: "100%",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
               }}
-            />
+            >
+              <AppText
+                style={{
+                  fontSize: 48,
+                  fontWeight: "800",
+                  letterSpacing: -1.5,
+                  color: amountInput ? colors.text : colors.textFaint,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {amountInput || "0"}
+              </AppText>
+              <AmountCaret />
+              <AppText
+                style={{
+                  fontSize: 16,
+                  fontWeight: "600",
+                  color: colors.textFaint,
+                  marginLeft: spacing.sm,
+                  marginBottom: 4,
+                }}
+              >
+                FCFA
+              </AppText>
+            </View>
             <AppText variant="caption" color={colors.textFaint}>
               {wallet
                 ? `Solde disponible : ${formatMoney(wallet.balance, wallet.currency)}`
@@ -430,22 +662,9 @@ export default function SendScreen() {
                   key={preset}
                   label={formatAmount(preset)}
                   active={amount === preset}
-                  onPress={() => {
-                    setAmountInput(formatAmount(preset));
-                    setError(null);
-                  }}
+                  onPress={() => setAmountInput(formatAmount(preset))}
                 />
               ))}
-              {wallet && wallet.balance > 0 ? (
-                <Chip
-                  label="Max"
-                  active={amount === wallet.balance}
-                  onPress={() => {
-                    setAmountInput(formatAmount(wallet.balance));
-                    setError(null);
-                  }}
-                />
-              ) : null}
             </View>
           </View>
         </FadeIn>
@@ -455,15 +674,22 @@ export default function SendScreen() {
             placeholder="Message (optionnel)"
             value={note}
             onChangeText={setNote}
+            onFocus={() => setNoteFocused(true)}
+            onBlur={() => setNoteFocused(false)}
             maxLength={200}
           />
         </FadeIn>
+      </ScrollView>
 
-        {error ? (
-          <AppText style={{ color: colors.danger, fontSize: 13 }}>
-            {error}
-          </AppText>
-        ) : null}
+      {/* Mockup layout: primary action sits directly above the grid keypad */}
+      <View
+        style={{
+          paddingHorizontal: spacing.lg,
+          paddingBottom: noteFocused
+            ? Math.max(insets.bottom, spacing.md) + spacing.sm
+            : spacing.sm,
+        }}
+      >
         <Button
           label={
             recipient
@@ -476,7 +702,19 @@ export default function SendScreen() {
           disabled={!canSend || transfer.isPending}
           loading={transfer.isPending}
         />
-      </ScrollView>
+      </View>
+
+      {/* Custom keypad — yields to the system keyboard while noting */}
+      {!noteFocused ? (
+        <AmountKeyboard
+          onDigit={appendDigits}
+          onDelete={backspaceAmount}
+          style={{
+            paddingHorizontal: spacing.xl,
+            paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.xs,
+          }}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

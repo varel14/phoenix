@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, type ReactNode } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Pressable,
   StyleSheet,
@@ -21,6 +22,36 @@ import { useTheme } from "@/theme/theme-provider";
 import type { WalletTransactionStatus } from "@/types/wallet";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+/**
+ * Soft brand glow behind every pay screen — the flow's continuous backdrop.
+ * Because every screen mounts the exact same glow in the same spot, stack
+ * transitions read as one seamless space rather than page swaps.
+ */
+export function PayBackdrop() {
+  const { isDark } = useTheme();
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <LinearGradient
+        colors={
+          isDark
+            ? [
+                "rgba(139, 92, 246, 0.16)",
+                "rgba(91, 35, 255, 0.05)",
+                "rgba(10, 9, 20, 0)",
+              ]
+            : [
+                "rgba(139, 92, 246, 0.09)",
+                "rgba(91, 35, 255, 0.03)",
+                "rgba(247, 245, 252, 0)",
+              ]
+        }
+        locations={[0, 0.55, 1]}
+        style={{ height: 280 }}
+      />
+    </View>
+  );
+}
 
 /** Entrance helper: fade + slight rise. Stagger siblings via `delay` (ms). */
 export function FadeIn({
@@ -88,21 +119,21 @@ export function QuickAction({
       onPress={onPress}
       scaleTo={0.96}
       accessibilityLabel={label}
-      style={{ width: 76, alignItems: "center", gap: spacing.xs }}
+      style={{ width: 64, alignItems: "center", gap: spacing.xs }}
     >
       {highlighted ? (
         <LinearGradient
           colors={gradients.brand}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[circle(58), { boxShadow: glows.brand }]}
+          style={[circle(46), { boxShadow: glows.brand }]}
         >
-          <Ionicons name={icon} size={24} color={colors.onPrimary} />
+          <Ionicons name={icon} size={19} color={colors.onPrimary} />
         </LinearGradient>
       ) : (
         <View
           style={[
-            circle(58),
+            circle(46),
             {
               backgroundColor: colors.surfaceElevated,
               borderWidth: StyleSheet.hairlineWidth,
@@ -110,7 +141,7 @@ export function QuickAction({
             },
           ]}
         >
-          <Ionicons name={icon} size={22} color={colors.text} />
+          <Ionicons name={icon} size={18} color={colors.text} />
         </View>
       )}
       <AppText variant="caption" numberOfLines={1}>
@@ -120,7 +151,10 @@ export function QuickAction({
   );
 }
 
-/** Translucent white pill used for actions sitting on the gradient card. */
+/**
+ * White pill action sitting on the gradient hero — the reference wallet's
+ * "Add Money / Move" treatment: solid white, near-black content, soft shadow.
+ */
 export function GlassButton({
   icon,
   label,
@@ -130,26 +164,22 @@ export function GlassButton({
   label: string;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
   return (
     <PressableScale onPress={onPress} scaleTo={0.96} style={{ flex: 1 }}>
       <View
         style={{
-          height: 44,
-          borderRadius: radii.md,
-          borderWidth: 1,
-          borderColor: withAlpha(colors.onPrimary, 0.32),
-          backgroundColor: withAlpha(colors.onPrimary, 0.16),
+          height: 46,
+          borderRadius: radii.full,
+          backgroundColor: "#FFFFFF",
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
           gap: spacing.sm,
+          boxShadow: "0 6px 18px rgba(0, 0, 0, 0.28)",
         }}
       >
-        <Ionicons name={icon} size={17} color={colors.onPrimary} />
-        <AppText
-          style={{ color: colors.onPrimary, fontSize: 15, fontWeight: "600" }}
-        >
+        <Ionicons name={icon} size={17} color="#0A0A0A" />
+        <AppText style={{ color: "#0A0A0A", fontSize: 15, fontWeight: "700" }}>
           {label}
         </AppText>
       </View>
@@ -216,7 +246,7 @@ export function SectionHeader({
         marginBottom: spacing.md,
       }}
     >
-      <AppText variant="heading" style={{ flex: 1 }}>
+      <AppText variant="subheading" style={{ flex: 1 }}>
         {title}
       </AppText>
       {actionLabel && onAction ? (
@@ -239,11 +269,13 @@ export function QuickRecipient({
   id,
   name,
   image,
+  size = 44,
   onPress,
 }: {
   id: string;
   name: string;
   image: string | null;
+  size?: number;
   onPress: () => void;
 }) {
   return (
@@ -251,13 +283,13 @@ export function QuickRecipient({
       onPress={onPress}
       scaleTo={0.96}
       accessibilityLabel={`Envoyer à ${name}`}
-      style={{ width: 68, alignItems: "center", gap: spacing.xs }}
+      style={{ width: size + 16, alignItems: "center", gap: spacing.xs }}
     >
-      <UserAvatar user={{ id, name, image }} size={56} />
+      <UserAvatar user={{ id, name, image }} size={size} />
       <AppText
         variant="caption"
         numberOfLines={1}
-        style={{ maxWidth: 64, textAlign: "center" }}
+        style={{ maxWidth: size + 12, textAlign: "center" }}
       >
         {name.split(/\s+/)[0]}
       </AppText>
@@ -265,21 +297,24 @@ export function QuickRecipient({
   );
 }
 
-/** Springy success banner: check disc, overline title, amount, message. */
+/** Springy result banner: check disc, overline title, amount, message. */
 export function SuccessHero({
   title,
   amountText,
   amountColor,
   message,
+  tone = "success",
 }: {
   title: string;
   amountText: string;
   amountColor: string;
   message?: string;
+  tone?: "success" | "danger";
 }) {
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(0.3)).current;
   const fade = useRef(new Animated.Value(0)).current;
+  const disc = tone === "success" ? colors.success : colors.danger;
 
   useEffect(() => {
     Animated.spring(scale, {
@@ -303,12 +338,16 @@ export function SuccessHero({
           style={[
             circle(84),
             {
-              backgroundColor: colors.success,
-              boxShadow: `0 10px 28px ${withAlpha(colors.success, 0.35)}`,
+              backgroundColor: disc,
+              boxShadow: `0 10px 28px ${withAlpha(disc, 0.35)}`,
             },
           ]}
         >
-          <Ionicons name="checkmark" size={40} color="#FFFFFF" />
+          <Ionicons
+            name={tone === "success" ? "checkmark" : "close"}
+            size={40}
+            color="#FFFFFF"
+          />
         </View>
       </Animated.View>
       <Animated.View
@@ -338,6 +377,139 @@ export function SuccessHero({
           </AppText>
         ) : null}
       </Animated.View>
+    </View>
+  );
+}
+
+/** Sender → recipient summary with avatars, used on result screens. */
+export function PeerFlow({
+  from,
+  to,
+}: {
+  from: { id: string; name: string; image: string | null };
+  to: { id: string; name: string; image: string | null };
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          gap: 2,
+        }}
+      >
+        <UserAvatar user={from} size={44} />
+        <AppText
+          variant="caption"
+          color={colors.textMuted}
+          numberOfLines={1}
+          style={{ maxWidth: 104 }}
+        >
+          {from.name}
+        </AppText>
+        <AppText variant="small" color={colors.textFaint}>
+          Expéditeur
+        </AppText>
+      </View>
+      <Ionicons
+        name="arrow-forward"
+        size={18}
+        color={colors.textFaint}
+        style={{ marginHorizontal: spacing.sm }}
+      />
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          gap: 2,
+        }}
+      >
+        <UserAvatar user={to} size={44} />
+        <AppText
+          variant="caption"
+          color={colors.textMuted}
+          numberOfLines={1}
+          style={{ maxWidth: 104 }}
+        >
+          {to.name}
+        </AppText>
+        <AppText variant="small" color={colors.textFaint}>
+          Bénéficiaire
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Custom numeric keypad for amount entry (no system keyboard): digits,
+ * a "000" key for fast FCFA entry, and backspace.
+ */
+export function AmountKeyboard({
+  onDigit,
+  onDelete,
+  style,
+}: {
+  onDigit: (digits: string) => void;
+  onDelete: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+
+  const key = (
+    label: string,
+    onPress: () => void,
+    options?: { icon?: boolean; accessibilityLabel?: string },
+  ) => (
+    <PressableScale
+      key={label}
+      onPress={onPress}
+      scaleTo={0.94}
+      accessibilityLabel={options?.accessibilityLabel ?? `Touche ${label}`}
+      style={{
+        flexBasis: "30%",
+        height: 64,
+        borderRadius: radii.lg,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {options?.icon ? (
+        <Ionicons name="backspace-outline" size={24} color={colors.textMuted} />
+      ) : (
+        <AppText
+          style={{
+            fontSize: label.length > 1 ? 18 : 28,
+            fontWeight: "500",
+            color: colors.text,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {label}
+        </AppText>
+      )}
+    </PressableScale>
+  );
+
+  return (
+    <View
+      style={[
+        {
+          flexDirection: "row",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          gap: spacing.md,
+        },
+        style,
+      ]}
+    >
+      {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) =>
+        key(digit, () => onDigit(digit)),
+      )}
+      {key("000", () => onDigit("000"), { accessibilityLabel: "Trois zéros" })}
+      {key("0", () => onDigit("0"))}
+      {key("⌫", onDelete, { icon: true, accessibilityLabel: "Effacer" })}
     </View>
   );
 }
@@ -412,5 +584,78 @@ export function StatusChip({ status }: { status: WalletTransactionStatus }) {
         {meta.label}
       </AppText>
     </View>
+  );
+}
+
+/**
+ * Compact follow toggle: "Suivre" (filled), "Suivi" (tinted) or "Mutuel"
+ * (success tint) — the payment partner badge used in the send list and on
+ * transaction detail.
+ */
+export function FollowButton({
+  isFollowing,
+  isMutual,
+  loading,
+  onPress,
+}: {
+  isFollowing: boolean;
+  isMutual: boolean;
+  loading?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const meta = !isFollowing
+    ? {
+        label: "Suivre",
+        icon: "person-add-outline" as const,
+        background: colors.primary,
+        tint: colors.onPrimary,
+      }
+    : isMutual
+      ? {
+          label: "Mutuel",
+          icon: "people-outline" as const,
+          background: withAlpha(colors.success, 0.14),
+          tint: colors.success,
+        }
+      : {
+          label: "Suivi",
+          icon: "checkmark" as const,
+          background: colors.primaryTint,
+          tint: colors.primary,
+        };
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      disabled={loading}
+      scaleTo={0.96}
+      hitSlop={6}
+      accessibilityLabel={
+        isFollowing ? `Ne plus suivre — ${meta.label}` : meta.label
+      }
+    >
+      <View
+        style={{
+          height: 30,
+          paddingHorizontal: spacing.md,
+          borderRadius: radii.full,
+          backgroundColor: meta.background,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+        }}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={meta.tint} />
+        ) : (
+          <Ionicons name={meta.icon} size={13} color={meta.tint} />
+        )}
+        <AppText style={{ color: meta.tint, fontSize: 12, fontWeight: "700" }}>
+          {meta.label}
+        </AppText>
+      </View>
+    </PressableScale>
   );
 }
