@@ -276,7 +276,7 @@ export default function SendScreen() {
             padding: spacing.lg,
             gap: spacing.xl,
             paddingTop: spacing.xxl,
-            paddingBottom: 48,
+            paddingBottom: 24,
           }}
         >
           <FadeIn>
@@ -284,10 +284,11 @@ export default function SendScreen() {
               title="Transfert réussi"
               amountText={`−${formatMoney(transaction.amount, transaction.currency)}`}
               amountColor={colors.text}
+              message="Pour plus de détails, consultez votre historique de transactions."
             />
           </FadeIn>
 
-          {/* Transaction receipt — both peers, amount context and references */}
+          {/* Transaction receipt — reference header, peers, then the amounts */}
           <FadeIn delay={80}>
             <View
               style={{
@@ -297,6 +298,13 @@ export default function SendScreen() {
                 gap: spacing.lg,
               }}
             >
+              <SummaryRow label="Transaction" value={transaction.reference} />
+              <View
+                style={{
+                  height: StyleSheet.hairlineWidth,
+                  backgroundColor: colors.hairline,
+                }}
+              />
               <PeerFlow
                 from={{
                   id: sessionUser?.id ?? "me",
@@ -316,25 +324,41 @@ export default function SendScreen() {
                   label="Date"
                   value={formatDateTime(transaction.createdAt)}
                 />
+                <SummaryRow
+                  label="Montant"
+                  value={formatMoney(transaction.amount, transaction.currency)}
+                />
                 {transaction.note ? (
                   <SummaryRow label="Note" value={transaction.note} />
                 ) : null}
                 <SummaryRow
+                  label="Montant total"
+                  value={formatMoney(transaction.amount, transaction.currency)}
+                  valueColor={colors.text}
+                />
+                <SummaryRow
                   label="Nouveau solde"
                   value={formatMoney(walletBalance, transaction.currency)}
                 />
-                <SummaryRow label="Référence" value={transaction.reference} />
               </View>
             </View>
           </FadeIn>
+        </ScrollView>
 
+        {/* Mockup: the action pins to the bottom of the screen */}
+        <View
+          style={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
+          }}
+        >
           <FadeIn delay={140}>
             <Button
               label="Retour au portefeuille"
               onPress={() => router.replace("/pay")}
             />
           </FadeIn>
-        </ScrollView>
+        </View>
       </View>
     );
   }

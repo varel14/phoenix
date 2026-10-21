@@ -331,24 +331,39 @@ export function SuccessHero({
     }).start();
   }, [scale, fade]);
 
+  const { colors: _themeColors, gradients: themeGradients } = useTheme();
   return (
     <View style={{ alignItems: "center", gap: spacing.md }}>
       <Animated.View style={{ transform: [{ scale }] }}>
-        <View
-          style={[
-            circle(84),
-            {
-              backgroundColor: disc,
-              boxShadow: `0 10px 28px ${withAlpha(disc, 0.35)}`,
-            },
-          ]}
-        >
-          <Ionicons
-            name={tone === "success" ? "checkmark" : "close"}
-            size={40}
-            color="#FFFFFF"
-          />
-        </View>
+        {tone === "success" ? (
+          <LinearGradient
+            colors={themeGradients.brand}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              circle(84),
+              {
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: `0 10px 28px ${withAlpha(themeGradients.brand[1], 0.4)}`,
+              },
+            ]}
+          >
+            <Ionicons name="checkmark" size={40} color="#FFFFFF" />
+          </LinearGradient>
+        ) : (
+          <View
+            style={[
+              circle(84),
+              {
+                backgroundColor: disc,
+                boxShadow: `0 10px 28px ${withAlpha(disc, 0.35)}`,
+              },
+            ]}
+          >
+            <Ionicons name="close" size={40} color="#FFFFFF" />
+          </View>
+        )}
       </Animated.View>
       <Animated.View
         style={{ opacity: fade, alignItems: "center", gap: spacing.xs }}
