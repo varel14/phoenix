@@ -3,7 +3,9 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+// SVG radial glow disabled until the dev client ships react-native-svg:
+// import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { authClient } from "@/services/auth/auth-client";
@@ -72,31 +74,73 @@ export default function LoginScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Ambient light — true radial glow falling in from the top-right corner. */}
+      {/* Ambient light — layered radial-ish glow falling in from the top-right
+          corner. LinearGradient circles (native module already in the dev
+          client). The true SVG radial version is commented below — restore it
+          after a dev-client build that ships react-native-svg. */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <LinearGradient
+          colors={[
+            withAlpha(colors.primary, isDark ? 0.22 : 0.12),
+            withAlpha(colors.primary, isDark ? 0.08 : 0.04),
+            "transparent",
+          ]}
+          start={{ x: 0.15, y: 0.15 }}
+          end={{ x: 0.9, y: 0.9 }}
+          style={{
+            position: "absolute",
+            top: -200,
+            right: -180,
+            width: 580,
+            height: 580,
+            borderRadius: 290,
+          }}
+        />
+        <LinearGradient
+          colors={[
+            withAlpha(colors.primary, isDark ? 0.18 : 0.09),
+            "transparent",
+          ]}
+          start={{ x: 0.2, y: 0.2 }}
+          end={{ x: 0.95, y: 0.95 }}
+          style={{
+            position: "absolute",
+            top: -90,
+            right: -90,
+            width: 340,
+            height: 340,
+            borderRadius: 170,
+          }}
+        />
+        <LinearGradient
+          colors={[
+            withAlpha(colors.primary, isDark ? 0.14 : 0.07),
+            "transparent",
+          ]}
+          start={{ x: 0.3, y: 0.3 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            position: "absolute",
+            top: -30,
+            right: -30,
+            width: 180,
+            height: 180,
+            borderRadius: 90,
+          }}
+        />
+      </View>
+
+      {/* True radial version — needs react-native-svg in the dev client:
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         <Svg style={StyleSheet.absoluteFill}>
           <Defs>
-            {/* Wide elliptical wash centered on the corner. */}
             <RadialGradient id="cornerGlow" cx="1" cy="0" rx="1.15" ry="0.95">
-              <Stop
-                offset="0"
-                stopColor={colors.primary}
-                stopOpacity={isDark ? 0.26 : 0.15}
-              />
-              <Stop
-                offset="0.45"
-                stopColor={colors.primary}
-                stopOpacity={isDark ? 0.1 : 0.05}
-              />
+              <Stop offset="0" stopColor={colors.primary} stopOpacity={isDark ? 0.26 : 0.15} />
+              <Stop offset="0.45" stopColor={colors.primary} stopOpacity={isDark ? 0.1 : 0.05} />
               <Stop offset="1" stopColor={colors.primary} stopOpacity={0} />
             </RadialGradient>
-            {/* Hot core hugging the corner for depth. */}
             <RadialGradient id="cornerCore" cx="1" cy="0" r="0.42">
-              <Stop
-                offset="0"
-                stopColor={colors.primary}
-                stopOpacity={isDark ? 0.2 : 0.1}
-              />
+              <Stop offset="0" stopColor={colors.primary} stopOpacity={isDark ? 0.2 : 0.1} />
               <Stop offset="1" stopColor={colors.primary} stopOpacity={0} />
             </RadialGradient>
           </Defs>
@@ -104,6 +148,7 @@ export default function LoginScreen() {
           <Rect width="100%" height="100%" fill="url(#cornerCore)" />
         </Svg>
       </View>
+      */}
 
       <KeyboardAwareScrollView
         contentContainerStyle={scrollStyle}
