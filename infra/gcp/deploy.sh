@@ -46,6 +46,7 @@ die() { printf '\033[1;31m[deploy] ERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
 [ -n "$PROJECT" ] || die "No GCP project. Run 'gcloud config set project <id>' or pass PROJECT=<id>."
 command -v gcloud >/dev/null || die "gcloud CLI is required."
+[ -f infra/gcp/cloudbuild.yaml ] || die "Run this script from the repository root (it needs infra/gcp/cloudbuild.yaml)."
 [ -n "${CORS_ORIGIN:-}" ] || die "CORS_ORIGIN is required (comma-separated browser origins that may call the API)."
 
 # --- CORS validation --------------------------------------------------------

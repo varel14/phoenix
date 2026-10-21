@@ -43,3 +43,6 @@ yarn-error.log*
 # runtime storage (voice notes, product images, protected digital purchases)
 apps/uploads/
 apps/digital-files/test-ebook.pdf
+
+# Wrangler local state
+apps/api/.wrangler/
