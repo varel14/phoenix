@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { Link, router } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { authClient } from "@/services/auth/auth-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { AppText, Button, Input } from "@/components/ui";
-import { BrandTagline, PhoenixMark } from "@/components/ui/brand";
+import { PhoenixMark } from "@/components/ui/brand";
 
 type SocialProvider = "google" | "apple";
 
@@ -72,41 +72,37 @@ export default function LoginScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Ambient light — soft radial glow falling in from the top-right corner. */}
+      {/* Ambient light — true radial glow falling in from the top-right corner. */}
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <LinearGradient
-          colors={[
-            withAlpha(colors.primary, isDark ? 0.2 : 0.12),
-            withAlpha(colors.primary, isDark ? 0.06 : 0.03),
-            "transparent",
-          ]}
-          start={{ x: 0.1, y: 0.1 }}
-          end={{ x: 0.9, y: 0.9 }}
-          style={{
-            position: "absolute",
-            top: -180,
-            right: -160,
-            width: 560,
-            height: 560,
-            borderRadius: 280,
-          }}
-        />
-        <LinearGradient
-          colors={[
-            withAlpha(colors.primary, isDark ? 0.16 : 0.08),
-            "transparent",
-          ]}
-          start={{ x: 0.2, y: 0.2 }}
-          end={{ x: 0.95, y: 0.95 }}
-          style={{
-            position: "absolute",
-            top: -70,
-            right: -70,
-            width: 320,
-            height: 320,
-            borderRadius: 160,
-          }}
-        />
+        <Svg style={StyleSheet.absoluteFill}>
+          <Defs>
+            {/* Wide elliptical wash centered on the corner. */}
+            <RadialGradient id="cornerGlow" cx="1" cy="0" rx="1.15" ry="0.95">
+              <Stop
+                offset="0"
+                stopColor={colors.primary}
+                stopOpacity={isDark ? 0.26 : 0.15}
+              />
+              <Stop
+                offset="0.45"
+                stopColor={colors.primary}
+                stopOpacity={isDark ? 0.1 : 0.05}
+              />
+              <Stop offset="1" stopColor={colors.primary} stopOpacity={0} />
+            </RadialGradient>
+            {/* Hot core hugging the corner for depth. */}
+            <RadialGradient id="cornerCore" cx="1" cy="0" r="0.42">
+              <Stop
+                offset="0"
+                stopColor={colors.primary}
+                stopOpacity={isDark ? 0.2 : 0.1}
+              />
+              <Stop offset="1" stopColor={colors.primary} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect width="100%" height="100%" fill="url(#cornerGlow)" />
+          <Rect width="100%" height="100%" fill="url(#cornerCore)" />
+        </Svg>
       </View>
 
       <KeyboardAwareScrollView
@@ -277,15 +273,23 @@ export default function LoginScreen() {
             </Pressable>
           </Link>
         </View>
-
-        {/* Footer */}
-        <View style={{ marginTop: spacing.xxl, alignItems: "center", gap: 4 }}>
-          <BrandTagline />
-          <AppText variant="small" color={colors.textFaint}>
-            © 2026 Chuyassi Emmanuel CE — Tous droits réservés
-          </AppText>
-        </View>
       </KeyboardAwareScrollView>
+
+      {/* Copyright pinned to the bottom of the screen */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          bottom: spacing.xl,
+          left: 0,
+          right: 0,
+          alignItems: "center",
+        }}
+      >
+        <AppText variant="small" color={colors.textFaint}>
+          © 2026 Chuyassi Emmanuel CE — Tous droits réservés
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -348,4 +352,6 @@ const scrollStyle = {
   flexGrow: 1,
   justifyContent: "center" as const,
   padding: spacing.xl,
+  // Keep the centered content clear of the pinned copyright.
+  paddingBottom: 96,
 };
