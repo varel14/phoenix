@@ -1,0 +1,17 @@
+# Build context for apps/api/Dockerfile (repo root). Keep the image build
+# lean and prevent local secrets from leaking into build context.
+.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/coverage
+apps/api/src/generated
+apps/mobile/*
+!apps/mobile/package.json
+apps/api/tests
+uploads
+digital-files
+thumbnails
+README.md
+FEATURE-MAP.md

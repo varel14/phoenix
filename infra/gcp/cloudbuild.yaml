@@ -1,0 +1,38 @@
+# Builds the Phoenix API image and pushes it to Artifact Registry.
+#
+# Run directly:
+#   gcloud builds submit --config infra/gcp/cloudbuild.yaml \
+#     --project <PROJECT> --substitutions _REGION=europe-west1,_IMAGE=<REGION>-docker.pkg.dev/<PROJECT>/phoenix/api:latest
+# or through infra/gcp/deploy.sh, which also performs the Cloud Run deploy.
+#
+# The Cloud Run deployment (env vars, secrets, CORS origin) lives in
+# deploy.sh so it runs with operator credentials instead of the Cloud Build
+# service account.
+
+substitutions:
+  _REGION: europe-west1
+  _REPOSITORY: phoenix
+  _IMAGE_TAG: latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/api/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$SHORT_SHA
+      - .
+
+timeout: 1800s
+
+options:
+  # pnpm installs the whole workspace (mobile deps included) in the deps stage.
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$SHORT_SHA
