@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Modal, Pressable, ScrollView, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -8,10 +8,18 @@ import { conversationsApi } from "@/services/api/chat-api";
 import { useConversations, useCallHistory } from "@/hooks/use-scl";
 import { useAuthStore } from "@/stores/auth-store";
 import { UserAvatar } from "@/components/chat/user-avatar";
-import { AppText, EmptyView, ErrorView, IconButton, Input, LoadingView } from "@/components/ui";
-import { radii, spacing } from "@/theme";
+import {
+  AppText,
+  EmptyView,
+  ErrorView,
+  IconButton,
+  Input,
+  LoadingView,
+} from "@/components/ui";
+import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { formatDuration } from "@/utils/format";
+import { formatChatTimestamp, formatDuration } from "@/utils/format";
+import { loadCachedSummaries, saveSummaries } from "@/services/chat/chat-cache";
 import type { Call, ConversationSummary } from "@/types/chat";
 
 type Segment = "discussions" | "appels";
@@ -22,23 +30,47 @@ export default function MessagesScreen() {
   const user = useAuthStore((state) => state.user);
   const [segment, setSegment] = useState<Segment>("discussions");
   const [search, setSearch] = useState("");
-  const [pickerVisible, setPickerVisible] = useState(false);
 
-  const conversationsQuery = useConversations(search.trim() ? { search: search.trim() } : {});
+  const conversationsQuery = useConversations(
+    search.trim() ? { search: search.trim() } : {},
+  );
   const callsQuery = useCallHistory();
+  const cachedSummaries = useMemo(() => loadCachedSummaries(), []);
+  // Only the unfiltered list is cached — search results are ephemeral.
+  useEffect(() => {
+    if (conversationsQuery.data && !search.trim()) {
+      saveSummaries(conversationsQuery.data.data);
+    }
+  }, [conversationsQuery.data, search]);
+  /** Fresh data when online; the MMKV snapshot when loading or offline. */
+  const summaries =
+    conversationsQuery.data?.data ??
+    (conversationsQuery.isLoading ? [] : cachedSummaries);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.background,
+        paddingTop: insets.top,
+      }}
+    >
       {/* Header */}
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <AppText variant="title">Messages</AppText>
           <IconButton
             icon="add-circle-outline"
             size={26}
             color={colors.accent}
             accessibilityLabel="Nouvelle conversation"
-            onPress={() => setPickerVisible(true)}
+            onPress={() => router.push("/chat/new")}
           />
         </View>
         <Input
@@ -76,10 +108,17 @@ export default function MessagesScreen() {
               borderRadius: radii.sm + 2,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: segment === value ? colors.primary : "transparent",
+              backgroundColor:
+                segment === value ? colors.primary : "transparent",
             }}
           >
-            <AppText style={{ color: segment === value ? colors.onPrimary : colors.textMuted, fontWeight: "700", fontSize: 13 }}>
+            <AppText
+              style={{
+                color: segment === value ? colors.onPrimary : colors.textMuted,
+                fontWeight: "700",
+                fontSize: 13,
+              }}
+            >
               {label}
             </AppText>
           </Pressable>
@@ -87,28 +126,43 @@ export default function MessagesScreen() {
       </View>
 
       {segment === "discussions" ? (
-        <ConversationsList query={conversationsQuery} currentUserId={user?.id ?? ""} />
+        <ConversationsList
+          summaries={summaries}
+          isLoading={conversationsQuery.isLoading && summaries.length === 0}
+          error={
+            conversationsQuery.isError
+              ? (conversationsQuery.error as Error)
+              : null
+          }
+          onRetry={() => void conversationsQuery.refetch()}
+          currentUserId={user?.id ?? ""}
+        />
       ) : (
         <CallsList query={callsQuery} currentUserId={user?.id ?? ""} />
       )}
-
-      <NewConversationPicker visible={pickerVisible} onClose={() => setPickerVisible(false)} />
     </View>
   );
 }
 
 function ConversationsList({
-  query,
+  summaries,
+  isLoading,
+  error,
+  onRetry,
   currentUserId,
 }: {
-  query: ReturnType<typeof useConversations>;
+  summaries: ConversationSummary[];
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
   currentUserId: string;
 }) {
   const { colors } = useTheme();
 
-  if (query.isLoading) return <LoadingView label="Chargement des conversations…" />;
-  if (query.isError) return <ErrorView message={(query.error as Error)?.message} onRetry={() => void query.refetch()} />;
-  if (!query.data || query.data.data.length === 0) {
+  if (isLoading) return <LoadingView label="Chargement des conversations…" />;
+  if (error && summaries.length === 0)
+    return <ErrorView message={error.message} onRetry={onRetry} />;
+  if (summaries.length === 0) {
     return (
       <EmptyView
         title="Aucune conversation"
@@ -118,9 +172,16 @@ function ConversationsList({
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingVertical: spacing.md, paddingBottom: 120 }}>
-      {query.data.data.map((conversation) => {
-        const other = conversation.participants.find((p) => p.userId !== currentUserId);
+    <ScrollView
+      contentContainerStyle={{
+        paddingVertical: spacing.md,
+        paddingBottom: 120,
+      }}
+    >
+      {summaries.map((conversation) => {
+        const other = conversation.participants.find(
+          (p) => p.userId !== currentUserId,
+        );
         const display = other?.user ?? conversation.participants[0]?.user;
         if (!display) return null;
         return (
@@ -133,29 +194,56 @@ function ConversationsList({
               gap: spacing.md,
               paddingHorizontal: spacing.lg,
               paddingVertical: spacing.md,
-              backgroundColor: pressed ? colors.surfaceHighlight : "transparent",
+              backgroundColor: pressed
+                ? colors.surfaceHighlight
+                : "transparent",
             })}
           >
             <UserAvatar user={display} size={52} />
             <View style={{ flex: 1, gap: 2 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <AppText variant="subheading" numberOfLines={1}>
                   {display.name}
                 </AppText>
-                <AppText variant="small" color={colors.textFaint}>
-                  {formatConversationTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt)}
+                <AppText style={{ fontSize: 11, color: colors.textFaint }}>
+                  {formatChatTimestamp(
+                    conversation.lastMessage?.createdAt ??
+                      conversation.updatedAt,
+                  )}
                 </AppText>
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.xs,
+                }}
+              >
+                <MessageTicks
+                  conversation={conversation}
+                  currentUserId={currentUserId}
+                />
                 {conversation.lastMessage?.type === "VOICE" ? (
-                  <Ionicons name="mic" size={14} color={colors.textFaint} />
+                  <Ionicons name="mic" size={12} color={colors.textFaint} />
                 ) : null}
                 <AppText
-                  variant="bodyMuted"
                   numberOfLines={1}
-                  style={{ flex: 1, color: conversation.unreadCount > 0 ? colors.text : colors.textMuted }}
+                  style={{
+                    flex: 1,
+                    fontSize: 13,
+                    color:
+                      conversation.unreadCount > 0
+                        ? colors.text
+                        : colors.textMuted,
+                  }}
                 >
-                  {previewFor(conversation.lastMessage)}
+                  {previewFor(conversation.lastMessage, conversation.isDraft)}
                 </AppText>
                 {conversation.unreadCount > 0 ? (
                   <View
@@ -169,8 +257,12 @@ function ConversationsList({
                       paddingHorizontal: 6,
                     }}
                   >
-                    <AppText style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
-                      {conversation.unreadCount > 9 ? "9+" : conversation.unreadCount}
+                    <AppText
+                      style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}
+                    >
+                      {conversation.unreadCount > 9
+                        ? "9+"
+                        : conversation.unreadCount}
                     </AppText>
                   </View>
                 ) : null}
@@ -183,17 +275,39 @@ function ConversationsList({
   );
 }
 
-function CallsList({ query, currentUserId }: { query: ReturnType<typeof useCallHistory>; currentUserId: string }) {
+function CallsList({
+  query,
+  currentUserId,
+}: {
+  query: ReturnType<typeof useCallHistory>;
+  currentUserId: string;
+}) {
   const { colors } = useTheme();
 
   if (query.isLoading) return <LoadingView label="Chargement des appels…" />;
-  if (query.isError) return <ErrorView message={(query.error as Error)?.message} onRetry={() => void query.refetch()} />;
+  if (query.isError)
+    return (
+      <ErrorView
+        message={(query.error as Error)?.message}
+        onRetry={() => void query.refetch()}
+      />
+    );
   if (!query.data || query.data.data.length === 0) {
-    return <EmptyView title="Aucun appel" subtitle="Vos appels passés et reçus apparaîtront ici." />;
+    return (
+      <EmptyView
+        title="Aucun appel"
+        subtitle="Vos appels passés et reçus apparaîtront ici."
+      />
+    );
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingVertical: spacing.md, paddingBottom: 120 }}>
+    <ScrollView
+      contentContainerStyle={{
+        paddingVertical: spacing.md,
+        paddingBottom: 120,
+      }}
+    >
       {query.data.data.map((call) => (
         <CallRow key={call.id} call={call} currentUserId={currentUserId} />
       ))}
@@ -201,7 +315,13 @@ function CallsList({ query, currentUserId }: { query: ReturnType<typeof useCallH
   );
 }
 
-function CallRow({ call, currentUserId }: { call: Call; currentUserId: string }) {
+function CallRow({
+  call,
+  currentUserId,
+}: {
+  call: Call;
+  currentUserId: string;
+}) {
   const { colors } = useTheme();
   const outgoing = call.callerId === currentUserId;
   const other = outgoing ? call.recipient : call.caller;
@@ -212,7 +332,15 @@ function CallRow({ call, currentUserId }: { call: Call; currentUserId: string })
   const directionColor = missed ? colors.danger : colors.success;
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.md,
+      }}
+    >
       <UserAvatar user={other} size={44} />
       <View style={{ flex: 1, gap: 2 }}>
         <AppText variant="subheading" numberOfLines={1}>
@@ -221,16 +349,23 @@ function CallRow({ call, currentUserId }: { call: Call; currentUserId: string })
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Ionicons name={directionIcon} size={13} color={directionColor} />
           <Ionicons name={icon} size={14} color={colors.textFaint} />
-          <AppText variant="small" color={missed ? colors.danger : colors.textFaint}>
+          <AppText
+            variant="small"
+            color={missed ? colors.danger : colors.textFaint}
+          >
             {callStatusLabel(call, outgoing)}
           </AppText>
         </View>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>
         <AppText variant="small" color={colors.textFaint}>
-          {formatConversationTime(call.createdAt)}
+          {formatChatTimestamp(call.createdAt)}
         </AppText>
-        {call.durationSec ? <AppText variant="small" color={colors.textFaint}>{formatDuration(call.durationSec)}</AppText> : null}
+        {call.durationSec ? (
+          <AppText variant="small" color={colors.textFaint}>
+            {formatDuration(call.durationSec)}
+          </AppText>
+        ) : null}
       </View>
     </View>
   );
@@ -255,85 +390,41 @@ function callStatusLabel(call: Call, outgoing: boolean): string {
   }
 }
 
-function previewFor(message: ConversationSummary["lastMessage"]): string {
-  if (!message) return "Nouvelle conversation";
+function previewFor(
+  message: ConversationSummary["lastMessage"],
+  isDraft?: boolean,
+): string {
+  if (!message)
+    return isDraft ? "Aucun message — brouillon" : "Nouvelle conversation";
   if (message.type === "VOICE") return "Message vocal";
   return message.content ?? "";
 }
 
-function formatConversationTime(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
-  if (sameDay) {
-    return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  }
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
-}
-
-function NewConversationPicker({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+/**
+ * WhatsApp-style delivery state for the row's own last message: single check
+ * once stored on the server, double check once the other side has read it.
+ */
+function MessageTicks({
+  conversation,
+  currentUserId,
+}: {
+  conversation: ConversationSummary;
+  currentUserId: string;
+}) {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const trimmed = search.trim();
-
-  const usersQuery = useQuery({
-    queryKey: ["conversation-users", trimmed],
-    queryFn: () => conversationsApi.searchUsers(trimmed),
-    enabled: visible && trimmed.length >= 2,
-  });
-
-  const createConversation = useMutation({
-    mutationFn: (recipientId: string) => conversationsApi.create(recipientId),
-    onSuccess: (conversation) => {
-      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      onClose();
-      setSearch("");
-      router.push(`/chat/${conversation.id}`);
-    },
-  });
-
+  const lastMessage = conversation.lastMessage;
+  if (!lastMessage || lastMessage.senderId !== currentUserId) return null;
+  const other = conversation.participants.find(
+    (p) => p.userId !== currentUserId,
+  );
+  const read =
+    !!other?.lastReadAt &&
+    new Date(other.lastReadAt) >= new Date(lastMessage.createdAt);
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Math.max(insets.top, spacing.lg) }}>
-        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg }}>
-          <IconButton icon="close" onPress={onClose} accessibilityLabel="Fermer" />
-          <AppText variant="heading" style={{ marginLeft: spacing.sm }}>
-            Nouvelle conversation
-          </AppText>
-        </View>
-        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
-          <Input placeholder="Nom de l'utilisateur" value={search} onChangeText={setSearch} autoFocus />
-        </View>
-        <ScrollView contentContainerStyle={{ paddingVertical: spacing.md }}>
-          {trimmed.length < 2 ? (
-            <EmptyView title="Rechercher un contact" subtitle="Saisissez au moins 2 lettres du nom de l'utilisateur." />
-          ) : usersQuery.isLoading ? (
-            <LoadingView />
-          ) : usersQuery.data && usersQuery.data.length > 0 ? (
-            usersQuery.data.map((user) => (
-              <Pressable
-                key={user.id}
-                onPress={() => createConversation.mutate(user.id)}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.md,
-                  paddingHorizontal: spacing.lg,
-                  paddingVertical: spacing.md,
-                  backgroundColor: pressed ? colors.surfaceHighlight : "transparent",
-                })}
-              >
-                <UserAvatar user={user} size={44} />
-                <AppText variant="subheading">{user.name}</AppText>
-              </Pressable>
-            ))
-          ) : (
-            <EmptyView title="Aucun utilisateur trouvé" subtitle="Essayez un autre nom." />
-          )}
-        </ScrollView>
-      </View>
-    </Modal>
+    <Ionicons
+      name={read ? "checkmark-done" : "checkmark"}
+      size={13}
+      color={read ? colors.primary : colors.textFaint}
+    />
   );
 }

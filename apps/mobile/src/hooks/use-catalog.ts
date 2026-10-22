@@ -102,6 +102,9 @@ export function useToggleFavorite() {
     },
     onMutate: async ({ mediaType, mediaId, favorite }) => {
       const key = queryKeys.favoriteIds();
+      // Kill any in-flight refetch first — it would otherwise land after the
+      // optimistic write and paint stale server state over the new heart.
+      await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Set<string>>(key);
       queryClient.setQueryData<Set<string>>(key, (current) => {
         const next = new Set(current ?? []);
@@ -117,7 +120,8 @@ export function useToggleFavorite() {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.favoriteIds() });
+      // The ids Set stays as the heart source of truth (rolled back on error);
+      // only revalidate the favorited-content lists against the server.
       void queryClient.invalidateQueries({ queryKey: ["favorites"] });
     },
   });

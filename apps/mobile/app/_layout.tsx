@@ -86,6 +86,11 @@ function RootNavigator() {
           >
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
+            {/* Entering/leaving the pay flow rises softly, matching its internal transitions. */}
+            <Stack.Screen
+              name="pay"
+              options={{ animation: "fade_from_bottom", animationDuration: 340 }}
+            />
           </Stack>
           <CallOverlay />
         </KeyboardProvider>

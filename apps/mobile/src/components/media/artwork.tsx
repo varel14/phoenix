@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { layout, radii } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { artworkGradient, initials } from "@/utils/format";
+import { artworkGradient, initials, profileGradient } from "@/utils/format";
 import { AppText } from "@/components/ui/primitives";
 import { resolveAssetUrl } from "@/services/api/api-client";
 
@@ -13,12 +13,14 @@ interface ArtworkProps {
   label: string;
   size: number;
   radius?: number;
+  /** "brand" keeps profile fallbacks in the lime family; "vivid" varies by seed. */
+  fallback?: "brand" | "vivid";
 }
 
 /** Artwork with a deterministic gradient + initials fallback. */
-export function Artwork({ uri, seed, label, size, radius = radii.md }: ArtworkProps) {
+export function Artwork({ uri, seed, label, size, radius = radii.md, fallback = "vivid" }: ArtworkProps) {
   const { colors, isDark } = useTheme();
-  const gradient = artworkGradient(seed);
+  const gradient = fallback === "brand" ? profileGradient(seed) : artworkGradient(seed);
   if (uri) {
     return (
       <Image

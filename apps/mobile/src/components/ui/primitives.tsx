@@ -140,7 +140,7 @@ export function Button({
       size={17}
       color={
         variant === "primary"
-          ? colors.onPrimary
+          ? "#FFFFFF"
           : variant === "danger"
             ? "#FFFFFF"
             : variant === "ghost"
@@ -163,7 +163,7 @@ export function Button({
           ? { color: colors.primary, fontWeight: "600" }
           : {}),
         ...(variant === "primary"
-          ? { color: colors.onPrimary, fontWeight: "700" }
+          ? { color: "#FFFFFF", fontWeight: "700" }
           : {}),
         fontSize: 16,
       }}
@@ -209,7 +209,7 @@ export function Button({
         >
           <View style={row}>
             {loading ? (
-              <ActivityIndicator size="small" color={colors.onPrimary} />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               iconNode
             )}

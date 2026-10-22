@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   useInfiniteMessages,
   useConversation,
@@ -30,6 +31,8 @@ import {
 } from "@/hooks/use-scl";
 import { useVoiceRecorder } from "@/hooks/use-voice-recorder";
 import { getSocket } from "@/services/realtime/socket";
+import { loadCachedMessages, saveMessages } from "@/services/chat/chat-cache";
+import { conversationsApi } from "@/services/api/chat-api";
 import { uploadFile } from "@/services/api/uploads-api";
 import {
   capturePhoto,
@@ -47,6 +50,7 @@ import { UserAvatar } from "@/components/chat/user-avatar";
 import { VoicePlayer } from "@/components/chat/voice-player";
 import { VoicePreview } from "@/components/chat/voice-preview";
 import {
+  Input,
   AppText,
   ErrorView,
   IconButton,
@@ -120,6 +124,10 @@ export default function ChatScreen() {
 
   const [draft, setDraft] = useState("");
   const [optimistic, setOptimistic] = useState<OptimisticMessage[]>([]);
+  /** Locally persisted thread — rendered instantly while the network loads. */
+  const [cachedMessages] = useState(() => loadCachedMessages(id));
+  const [searching, setSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [sendingVoice, setSendingVoice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** WhatsApp-style pre-send clip; non-null switches the composer to preview mode. */
@@ -148,18 +156,43 @@ export default function ChatScreen() {
   const otherId = other?.id ?? "";
   const currentUserId = user?.id ?? "";
 
+  const serverMessages = useMemo(
+    () =>
+      [
+        ...(messagesQuery.data?.pages.flatMap((page) => page.messages) ?? []),
+      ].reverse(),
+    [messagesQuery.data],
+  );
+
   const messages: ChatMessage[] = useMemo(() => {
-    // The API pages run newest-first for pagination; flip so the thread reads
-    // oldest → newest and scrollToEnd lands on the latest message.
-    const server = [
-      ...(messagesQuery.data?.pages.flatMap((page) => page.messages) ?? []),
-    ].reverse();
+    // Cached rows render instantly; the server copy overrides them by id, so
+    // the freshest data always wins without flicker.
+    const byId = new Map<string, ChatMessage>();
+    for (const message of cachedMessages) byId.set(message.id, message);
+    for (const message of serverMessages) byId.set(message.id, message);
     const optimisticNotSynced = optimistic.filter(
-      (message) =>
-        !server.some((serverMessage) => serverMessage.id === message.serverId),
+      (message) => !byId.has(message.serverId ?? "") && !byId.has(message.id),
     );
-    return [...server, ...optimisticNotSynced];
-  }, [messagesQuery.data, optimistic]);
+    for (const message of optimisticNotSynced) byId.set(message.id, message);
+    return [...byId.values()].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [cachedMessages, serverMessages, optimistic]);
+
+  // Persist on every confirmed send/reception (server pages only — pending
+  // optimistic rows stay local until the server acknowledges them).
+  useEffect(() => {
+    if (serverMessages.length > 0) saveMessages(id, serverMessages);
+  }, [id, serverMessages]);
+
+  // Typo-tolerant in-chat search (pg_trgm on the server), live as you type.
+  const trimmedSearch = searchQuery.trim();
+  const messageSearch = useQuery({
+    queryKey: ["chat-search", id, trimmedSearch],
+    queryFn: () => conversationsApi.searchMessages(id, trimmedSearch),
+    enabled: searching && trimmedSearch.length >= 2,
+  });
 
   const markConversationRead = useCallback(() => {
     void markRead.mutateAsync(id).catch(() => undefined);
@@ -469,12 +502,27 @@ export default function ChatScreen() {
           </AppText>
         </View>
         <IconButton
-          icon="call-outline"
+          icon={searching ? "close" : "search-outline"}
           tinted
-          disabled={!canCall}
-          onPress={() => void webrtcService.startCall(otherId, "AUDIO", id)}
-          accessibilityLabel="Appel audio"
+          onPress={() => {
+            setSearching((value) => !value);
+            setSearchQuery("");
+          }}
+          accessibilityLabel={
+            searching
+              ? "Fermer la recherche"
+              : "Rechercher dans la conversation"
+          }
         />
+        {!searching ? (
+          <IconButton
+            icon="call-outline"
+            tinted
+            disabled={!canCall}
+            onPress={() => void webrtcService.startCall(otherId, "AUDIO", id)}
+            accessibilityLabel="Appel audio"
+          />
+        ) : null}
         <IconButton
           icon="videocam-outline"
           tinted
@@ -483,6 +531,90 @@ export default function ChatScreen() {
           accessibilityLabel="Appel vidéo"
         />
       </View>
+
+      {/* In-chat search (typo-tolerant, server-side trigram matching) */}
+      {searching ? (
+        <View
+          style={{
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.sm,
+            gap: spacing.sm,
+          }}
+        >
+          <Input
+            placeholder="Rechercher dans la conversation…"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+          />
+          {trimmedSearch.length >= 2 ? (
+            <View style={{ maxHeight: 220 }}>
+              {messageSearch.isFetching ? (
+                <AppText
+                  variant="caption"
+                  color={colors.textFaint}
+                  style={{ paddingVertical: spacing.sm }}
+                >
+                  Recherche…
+                </AppText>
+              ) : (messageSearch.data?.length ?? 0) === 0 ? (
+                <AppText
+                  variant="caption"
+                  color={colors.textFaint}
+                  style={{ paddingVertical: spacing.sm }}
+                >
+                  Aucun message trouvé (les fautes de frappe sont tolérées).
+                </AppText>
+              ) : (
+                <ScrollView
+                  style={{ flexGrow: 0 }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {messageSearch.data!.map((message) => (
+                    <Pressable
+                      key={message.id}
+                      onPress={() => setSearching(false)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        gap: spacing.md,
+                        paddingVertical: spacing.sm,
+                        paddingHorizontal: spacing.sm,
+                        borderRadius: radii.md,
+                        backgroundColor: pressed
+                          ? colors.surfaceHighlight
+                          : "transparent",
+                      })}
+                    >
+                      <AppText
+                        style={{
+                          fontSize: 11,
+                          color: colors.textFaint,
+                          fontVariant: ["tabular-nums"],
+                          marginTop: 2,
+                        }}
+                      >
+                        {new Date(message.createdAt).toLocaleTimeString(
+                          "fr-FR",
+                          {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          },
+                        )}
+                      </AppText>
+                      <AppText
+                        numberOfLines={2}
+                        style={{ flex: 1, fontSize: 13, color: colors.text }}
+                      >
+                        {message.content ?? "—"}
+                      </AppText>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Messages */}
       <ScrollView

@@ -17,23 +17,30 @@ import {
   IconButton,
   PressableScale,
 } from "@/components/ui";
-import { WalletTransactionRow } from "@/components/wallet-transaction-row";
+import {
+  monthInOut,
+  WalletTransactionRow,
+} from "@/components/wallet-transaction-row";
+import { UserAvatar } from "@/components/chat/user-avatar";
 import {
   FadeIn,
   GlassButton,
+  PayBackdrop,
   QuickAction,
   QuickRecipient,
   SectionHeader,
 } from "@/components/wallet-ui";
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { formatMoney } from "@/utils/money";
+import { formatAmount } from "@/utils/money";
+import { useAuthStore } from "@/stores/auth-store";
 
 const BALANCE_HIDDEN_KEY = "phoenix/wallet-balance-hidden";
 
 export default function WalletHomeScreen() {
   const { colors, gradients, glows } = useTheme();
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((state) => state.user);
   const walletQuery = useWallet();
   const recentQuery = useWalletTransactions();
   const recipientsQuery = useWalletRecipients("");
@@ -41,6 +48,8 @@ export default function WalletHomeScreen() {
   const wallet = walletQuery.data;
   const recent = (recentQuery.data?.data ?? []).slice(0, 4);
   const quickContacts = (recipientsQuery.data ?? []).slice(0, 8);
+  const totals = monthInOut(recentQuery.data?.data ?? []);
+  const firstName = user?.name.split(/\s+/)[0];
 
   // Hidden balances persist across visits, like a real banking app.
   const [hidden, setHidden] = useState(false);
@@ -84,7 +93,8 @@ export default function WalletHomeScreen() {
         paddingTop: insets.top,
       }}
     >
-      {/* Header */}
+      <PayBackdrop />
+      {/* Header — reference greeting: close, avatar, name, product line */}
       <FadeIn
         style={{ paddingHorizontal: spacing.sm, paddingVertical: spacing.sm }}
       >
@@ -96,20 +106,27 @@ export default function WalletHomeScreen() {
           }}
         >
           <IconButton
-            icon="chevron-back"
+            icon="close"
             onPress={() => router.back()}
-            accessibilityLabel="Retour"
+            accessibilityLabel="Fermer"
             tinted
           />
-          <View style={{ flex: 1 }}>
+          {user ? (
+            <UserAvatar
+              user={{ id: user.id, name: user.name, image: user.image ?? null }}
+              size={40}
+            />
+          ) : null}
+          <View style={{ flex: 1, gap: 1 }}>
             <AppText
-              variant="small"
-              color={colors.textFaint}
-              style={{ letterSpacing: 2 }}
+              style={{ fontSize: 17, fontWeight: "700" }}
+              numberOfLines={1}
             >
-              CHUYASSI EMMANUEL PAY
+              Bonjour{firstName ? `, ${firstName}` : ""}
             </AppText>
-            <AppText variant="title">Portefeuille</AppText>
+            <AppText variant="small" color={colors.textFaint}>
+              Chuyassi Pay
+            </AppText>
           </View>
         </View>
       </FadeIn>
@@ -236,21 +253,54 @@ export default function WalletHomeScreen() {
                 >
                   SOLDE DISPONIBLE
                 </AppText>
-                <AppText
-                  style={{
-                    fontSize: 36,
-                    fontWeight: "800",
-                    letterSpacing: -0.8,
-                    color: colors.onPrimary,
-                    fontVariant: ["tabular-nums"],
-                  }}
-                  adjustsFontSizeToFit
-                  numberOfLines={1}
-                >
-                  {hidden
-                    ? "••••••"
-                    : formatMoney(wallet.balance, wallet.currency)}
-                </AppText>
+                {hidden ? (
+                  <AppText
+                    style={{
+                      fontSize: 42,
+                      fontWeight: "800",
+                      letterSpacing: -1,
+                      color: colors.onPrimary,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                    adjustsFontSizeToFit
+                    numberOfLines={1}
+                  >
+                    ••••••
+                  </AppText>
+                ) : (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-end",
+                      gap: 7,
+                    }}
+                  >
+                    <AppText
+                      style={{
+                        fontSize: 42,
+                        fontWeight: "800",
+                        letterSpacing: -1,
+                        color: colors.onPrimary,
+                        fontVariant: ["tabular-nums"],
+                        lineHeight: 46,
+                      }}
+                      adjustsFontSizeToFit
+                      numberOfLines={1}
+                    >
+                      {formatAmount(wallet.balance)}
+                    </AppText>
+                    <AppText
+                      style={{
+                        fontSize: 15,
+                        fontWeight: "700",
+                        color: withAlpha(colors.onPrimary, 0.6),
+                        paddingBottom: 6,
+                      }}
+                    >
+                      {wallet.currency === "XOF" ? "FCFA" : wallet.currency}
+                    </AppText>
+                  </View>
+                )}
               </View>
 
               <View
@@ -307,6 +357,29 @@ export default function WalletHomeScreen() {
             </View>
           </FadeIn>
 
+          {/* Overview — this month's in/out, the reference's Income/Expenses cards */}
+          {recent.length > 0 ? (
+            <FadeIn delay={150}>
+              <View>
+                <SectionHeader title="Aperçu" />
+                <View style={{ flexDirection: "row", gap: spacing.md }}>
+                  <StatCard
+                    icon="arrow-down-outline"
+                    label="Entrées · ce mois"
+                    amount={`+${formatAmount(totals.in)} FCFA`}
+                    tint={colors.success}
+                  />
+                  <StatCard
+                    icon="arrow-up-outline"
+                    label="Sorties · ce mois"
+                    amount={`−${formatAmount(totals.out)} FCFA`}
+                    tint={colors.danger}
+                  />
+                </View>
+              </View>
+            </FadeIn>
+          ) : null}
+
           {/* Quick send contacts */}
           {quickContacts.length > 0 ? (
             <FadeIn delay={180}>
@@ -328,12 +401,12 @@ export default function WalletHomeScreen() {
                     onPress={() => openSend()}
                     scaleTo={0.96}
                     accessibilityLabel="Nouvel envoi"
-                    style={{ width: 68, alignItems: "center", gap: spacing.xs }}
+                    style={{ width: 60, alignItems: "center", gap: spacing.xs }}
                   >
                     <View
                       style={{
-                        width: 56,
-                        height: 56,
+                        width: 44,
+                        height: 44,
                         borderRadius: radii.full,
                         borderWidth: 1.5,
                         borderStyle: "dashed",
@@ -343,7 +416,7 @@ export default function WalletHomeScreen() {
                         justifyContent: "center",
                       }}
                     >
-                      <Ionicons name="add" size={22} color={colors.textMuted} />
+                      <Ionicons name="add" size={18} color={colors.textMuted} />
                     </View>
                     <AppText variant="caption" color={colors.textMuted}>
                       Nouveau
@@ -408,6 +481,66 @@ export default function WalletHomeScreen() {
           </FadeIn>
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+/** Reference-style overview card: tinted icon tile, label, colored amount. */
+function StatCard({
+  icon,
+  label,
+  amount,
+  tint,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  amount: string;
+  tint: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        backgroundColor: colors.surface,
+        borderRadius: 20,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.hairline,
+        padding: spacing.md,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: radii.md,
+          backgroundColor: withAlpha(tint, 0.14),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name={icon} size={17} color={tint} />
+      </View>
+      <View style={{ flex: 1, gap: 1 }}>
+        <AppText variant="small" color={colors.textFaint} numberOfLines={1}>
+          {label}
+        </AppText>
+        <AppText
+          style={{
+            fontSize: 15,
+            fontWeight: "800",
+            color: tint,
+            fontVariant: ["tabular-nums"],
+          }}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {amount}
+        </AppText>
+      </View>
     </View>
   );
 }

@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { connectRealtime, disconnectRealtime, getSocket } from "@/services/realtime/socket";
+import {
+  connectRealtime,
+  disconnectRealtime,
+  getSocket,
+} from "@/services/realtime/socket";
 import { webrtcService } from "@/services/calls/webrtc.service";
 import { useAuthStore } from "@/stores/auth-store";
 import type { MessagePayload } from "@/types/chat";
@@ -32,17 +36,37 @@ export function useRealtime() {
       const onMessageReceived = (payload: MessagePayload) => {
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         if (payload.conversationId) {
-          void queryClient.invalidateQueries({ queryKey: ["messages", payload.conversationId, "infinite"] });
+          void queryClient.invalidateQueries({
+            queryKey: ["messages", payload.conversationId, "infinite"],
+          });
+        }
+      };
+
+      const onFollowRequest = () => {
+        void queryClient.invalidateQueries({ queryKey: ["follow-requests"] });
+        void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      };
+      const onFollowAccepted = (payload: { userId?: string }) => {
+        void queryClient.invalidateQueries({ queryKey: ["follow-requests"] });
+        void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+        if (payload?.userId) {
+          void queryClient.invalidateQueries({
+            queryKey: ["follow-state", payload.userId],
+          });
         }
       };
 
       socket.on("message:received", onMessageReceived);
+      socket.on("follow:request", onFollowRequest);
+      socket.on("follow:accepted", onFollowAccepted);
     })();
 
     return () => {
       cancelled = true;
       const socket = getSocket();
       socket?.off("message:received");
+      socket?.off("follow:request");
+      socket?.off("follow:accepted");
       disconnectRealtime();
     };
   }, [user, queryClient]);

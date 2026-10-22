@@ -40,6 +40,8 @@ export interface Message {
 export interface Conversation {
   id: string;
   type: "DIRECT" | "GROUP";
+  /** Draft ("brouillon"): created from the composer, no message sent yet. */
+  isDraft: boolean;
   createdAt: string;
   updatedAt: string;
   participants: ConversationParticipant[];

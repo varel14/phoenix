@@ -1,12 +1,24 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { api, createUser, uniqueEmail } from "./helpers.js";
+import { api, createUser, uniqueEmail, type TestUser } from "./helpers.js";
 import { prisma } from "../src/config/prisma.js";
+
+/** Chat creation requires a mutual follow — wire one up for test users. */
+async function establishMutual(
+  app: Awaited<ReturnType<typeof api>>,
+  a: TestUser,
+  b: TestUser,
+) {
+  await app.post(`/api/v1/users/${b.userId}/follow`).set("Cookie", a.cookie);
+  await app.post(`/api/v1/users/${a.userId}/follow`).set("Cookie", b.cookie);
+}
 
 describe("SCL conversations", () => {
   beforeAll(async () => {
     // Truncate is handled globally per-suite by the shared database; the
     // authorization test file truncates before auth checks.
-    await prisma.$executeRawUnsafe(`TRUNCATE conversations, conversation_participants, messages, message_attachments, calls CASCADE`);
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE conversations, conversation_participants, messages, message_attachments, calls CASCADE`,
+    );
   });
 
   it("creates a direct conversation and deduplicates it", async () => {
@@ -14,12 +26,22 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob"));
     const app = await api();
 
-    const created = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const created = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     expect(created.status).toBe(201);
     expect(created.body.data.type).toBe("DIRECT");
     expect(created.body.data.participants).toHaveLength(2);
 
-    const again = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const again = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     expect(again.status).toBe(201);
     expect(again.body.data.id).toBe(created.body.data.id);
   });
@@ -40,13 +62,22 @@ describe("SCL conversations", () => {
     const mallory = await createUser("Mallory", uniqueEmail("mallory"));
     const app = await api();
 
-    const created = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const created = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     const conversationId = created.body.data.id;
 
-    const detail = await app.get(`/api/v1/conversations/${conversationId}`).set("Cookie", mallory.cookie);
+    const detail = await app
+      .get(`/api/v1/conversations/${conversationId}`)
+      .set("Cookie", mallory.cookie);
     expect(detail.status).toBe(403);
 
-    const messages = await app.get(`/api/v1/conversations/${conversationId}/messages`).set("Cookie", mallory.cookie);
+    const messages = await app
+      .get(`/api/v1/conversations/${conversationId}/messages`)
+      .set("Cookie", mallory.cookie);
     expect(messages.status).toBe(403);
 
     const send = await app
@@ -61,7 +92,12 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob-msg"));
     const app = await api();
 
-    const conversation = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const conversation = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     const conversationId = conversation.body.data.id;
 
     const sent = await app
@@ -72,20 +108,28 @@ describe("SCL conversations", () => {
     expect(sent.body.data.content).toBe("Salut Bob !");
 
     // Bob sees one unread conversation.
-    const bobList = await app.get("/api/v1/conversations").set("Cookie", bob.cookie);
+    const bobList = await app
+      .get("/api/v1/conversations")
+      .set("Cookie", bob.cookie);
     expect(bobList.status).toBe(200);
     expect(bobList.body.data[0].unreadCount).toBe(1);
     expect(bobList.body.data[0].lastMessage.content).toBe("Salut Bob !");
 
     // Mark read clears the unread counter.
-    const read = await app.post(`/api/v1/conversations/${conversationId}/read`).set("Cookie", bob.cookie);
+    const read = await app
+      .post(`/api/v1/conversations/${conversationId}/read`)
+      .set("Cookie", bob.cookie);
     expect(read.status).toBe(200);
 
-    const bobListAfter = await app.get("/api/v1/conversations").set("Cookie", bob.cookie);
+    const bobListAfter = await app
+      .get("/api/v1/conversations")
+      .set("Cookie", bob.cookie);
     expect(bobListAfter.body.data[0].unreadCount).toBe(0);
 
     // Pagination: newest first.
-    const messages = await app.get(`/api/v1/conversations/${conversationId}/messages`).set("Cookie", alice.cookie);
+    const messages = await app
+      .get(`/api/v1/conversations/${conversationId}/messages`)
+      .set("Cookie", alice.cookie);
     expect(messages.status).toBe(200);
     expect(messages.body.data).toHaveLength(1);
   });
@@ -94,7 +138,12 @@ describe("SCL conversations", () => {
     const alice = await createUser("Alice", uniqueEmail("alice-voice"));
     const bob = await createUser("Bob", uniqueEmail("bob-voice"));
     const app = await api();
-    const conversation = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const conversation = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     const conversationId = conversation.body.data.id;
 
     const sent = await app
@@ -120,7 +169,12 @@ describe("SCL conversations", () => {
     const alice = await createUser("Alice", uniqueEmail("alice-media"));
     const bob = await createUser("Bob", uniqueEmail("bob-media"));
     const app = await api();
-    const conversation = await app.post("/api/v1/conversations").set("Cookie", alice.cookie).send({ recipientId: bob.userId });
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const conversation = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
     const conversationId = conversation.body.data.id;
 
     const photo = await app
@@ -175,16 +229,30 @@ describe("SCL conversations", () => {
 
     // Both parties can see the call in history.
     const app = await api();
-    const aliceCalls = await app.get("/api/v1/calls").set("Cookie", alice.cookie);
+    const aliceCalls = await app
+      .get("/api/v1/calls")
+      .set("Cookie", alice.cookie);
     expect(aliceCalls.status).toBe(200);
-    expect(aliceCalls.body.data.some((entry: { id: string }) => entry.id === call.id)).toBe(true);
+    expect(
+      aliceCalls.body.data.some(
+        (entry: { id: string }) => entry.id === call.id,
+      ),
+    ).toBe(true);
 
     const bobCalls = await app.get("/api/v1/calls").set("Cookie", bob.cookie);
-    expect(bobCalls.body.data.some((entry: { id: string }) => entry.id === call.id)).toBe(true);
+    expect(
+      bobCalls.body.data.some((entry: { id: string }) => entry.id === call.id),
+    ).toBe(true);
 
     // Mallory cannot see it.
-    const malloryCalls = await app.get("/api/v1/calls").set("Cookie", mallory.cookie);
-    expect(malloryCalls.body.data.some((entry: { id: string }) => entry.id === call.id)).toBe(false);
+    const malloryCalls = await app
+      .get("/api/v1/calls")
+      .set("Cookie", mallory.cookie);
+    expect(
+      malloryCalls.body.data.some(
+        (entry: { id: string }) => entry.id === call.id,
+      ),
+    ).toBe(false);
   });
 
   it("searches users for the conversation picker", async () => {
@@ -192,9 +260,135 @@ describe("SCL conversations", () => {
     await createUser("Zoé Dupont", uniqueEmail("zoe"));
     const app = await api();
 
-    const res = await app.get("/api/v1/conversations/users?search=Zo").set("Cookie", alice.cookie);
+    const res = await app
+      .get("/api/v1/conversations/users?search=Zo")
+      .set("Cookie", alice.cookie);
     expect(res.status).toBe(200);
-    expect(res.body.data.some((user: { name: string }) => user.name === "Zoé Dupont")).toBe(true);
-    expect(res.body.data.some((user: { name: string }) => user.name === "Alice")).toBe(false);
+    expect(
+      res.body.data.some(
+        (user: { name: string }) => user.name === "Zoé Dupont",
+      ),
+    ).toBe(true);
+    expect(
+      res.body.data.some((user: { name: string }) => user.name === "Alice"),
+    ).toBe(false);
+  });
+
+  it("returns a default contact list when the picker search is empty", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-empty"));
+    await createUser("Default Contact", uniqueEmail("default-contact"));
+    const app = await api();
+
+    const res = await app
+      .get("/api/v1/conversations/users?search=")
+      .set("Cookie", alice.cookie);
+    expect(res.status).toBe(200);
+    expect(
+      res.body.data.some(
+        (user: { name: string }) => user.name === "Default Contact",
+      ),
+    ).toBe(true);
+  });
+
+  it("finds users despite typos (trigram matching)", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-trgm"));
+    await createUser("Boubacar Sylla", uniqueEmail("boubacar"));
+    const app = await api();
+
+    const res = await app
+      .get("/api/v1/conversations/users?search=Boubacar%20Silah")
+      .set("Cookie", alice.cookie);
+    expect(res.status).toBe(200);
+    expect(
+      res.body.data.some(
+        (user: { name: string }) => user.name === "Boubacar Sylla",
+      ),
+    ).toBe(true);
+  });
+
+  it("creates draft conversations that promote on the first message", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-draft"));
+    const bob = await createUser("Bob", uniqueEmail("bob-draft"));
+    const app = await api();
+
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const draft = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId, draft: true });
+    expect(draft.status).toBe(201);
+    expect(draft.body.data.isDraft).toBe(true);
+
+    // Sending the first message promotes the draft to a real conversation.
+    const sent = await app
+      .post(`/api/v1/conversations/${draft.body.data.id}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({ type: "TEXT", content: "Bonjour Bob !" });
+    expect(sent.status).toBe(201);
+
+    const list = await app
+      .get("/api/v1/conversations")
+      .set("Cookie", alice.cookie);
+    const row = list.body.data.find(
+      (c: { id: string }) => c.id === draft.body.data.id,
+    );
+    expect(row.isDraft).toBe(false);
+    expect(row.lastMessage.content).toBe("Bonjour Bob !");
+  });
+
+  it("delivers the payload message when creating over an existing conversation", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-atomic"));
+    const bob = await createUser("Bob", uniqueEmail("bob-atomic"));
+    const app = await api();
+
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const first = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({
+        recipientId: bob.userId,
+        message: { type: "TEXT", content: "Premier message" },
+      });
+    expect(first.status).toBe(201);
+    expect(first.body.data.isDraft).toBe(false);
+
+    const thread = await app
+      .get(`/api/v1/conversations/${first.body.data.id}/messages`)
+      .set("Cookie", alice.cookie);
+    expect(
+      thread.body.data.some(
+        (m: { content: string }) => m.content === "Premier message",
+      ),
+    ).toBe(true);
+  });
+
+  it("finds conversations by message content with typos (trigram matching)", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-trgm-msg"));
+    const bob = await createUser("Bob", uniqueEmail("bob-trgm-msg"));
+    const app = await api();
+
+    // mutual follow prerequisite
+    await establishMutual(app, alice, bob);
+    const created = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId });
+    await app
+      .post(`/api/v1/conversations/${created.body.data.id}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({
+        type: "TEXT",
+        content: "On se retrouve au marché de Cocody demain",
+      });
+
+    const res = await app
+      .get("/api/v1/conversations?search=marche%20de%20Cocodi")
+      .set("Cookie", alice.cookie);
+    expect(res.status).toBe(200);
+    expect(
+      res.body.data.some((c: { id: string }) => c.id === created.body.data.id),
+    ).toBe(true);
   });
 });

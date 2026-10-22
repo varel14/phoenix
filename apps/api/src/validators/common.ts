@@ -12,6 +12,11 @@ export const idParamsSchema = z.object({
   id: uuidSchema,
 });
 
+/** Params schema for routes addressing a user by their Better Auth id. */
+export const userIdParamsSchema = z.object({
+  id: userIdSchema,
+});
+
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

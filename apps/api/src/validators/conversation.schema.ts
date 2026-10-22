@@ -6,11 +6,12 @@ export const listConversationsQuerySchema = paginationSchema.extend({
 });
 
 export const searchUsersQuerySchema = z.object({
-  search: z.string().trim().min(1).max(100),
+  // Optional: an empty search returns the default contact list.
+  search: z.string().trim().max(100).default(""),
 });
 
-export const createConversationBodySchema = z.object({
-  recipientId: userIdSchema,
+export const searchMessagesQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100),
 });
 
 export const listMessagesQuerySchema = paginationSchema.extend({});
@@ -19,7 +20,12 @@ export const messageAttachmentSchema = z.object({
   url: z.string().min(1).max(2048),
   storageKey: z.string().min(1).max(500),
   mimeType: z.string().min(1).max(100).optional(),
-  fileSizeBytes: z.number().int().positive().max(100 * 1024 * 1024).optional(),
+  fileSizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(100 * 1024 * 1024)
+    .optional(),
   durationSec: z.number().int().positive().max(3600).optional(),
   name: z.string().trim().max(255).optional(),
 });
@@ -32,23 +38,57 @@ export const sendMessageBodySchema = z
   })
   .superRefine((value, ctx) => {
     if (value.type === "TEXT" && !value.content) {
-      ctx.addIssue({ code: "custom", path: ["content"], message: "content is required for TEXT messages" });
+      ctx.addIssue({
+        code: "custom",
+        path: ["content"],
+        message: "content is required for TEXT messages",
+      });
     }
     if (value.type === "VOICE") {
       if (!value.attachment) {
-        ctx.addIssue({ code: "custom", path: ["attachment"], message: "attachment is required for VOICE messages" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["attachment"],
+          message: "attachment is required for VOICE messages",
+        });
       } else if (!value.attachment.durationSec) {
-        ctx.addIssue({ code: "custom", path: ["attachment", "durationSec"], message: "durationSec is required for VOICE messages" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["attachment", "durationSec"],
+          message: "durationSec is required for VOICE messages",
+        });
       }
     }
-    if ((value.type === "IMAGE" || value.type === "VIDEO" || value.type === "FILE") && !value.attachment) {
-      ctx.addIssue({ code: "custom", path: ["attachment"], message: `attachment is required for ${value.type} messages` });
+    if (
+      (value.type === "IMAGE" ||
+        value.type === "VIDEO" ||
+        value.type === "FILE") &&
+      !value.attachment
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["attachment"],
+        message: `attachment is required for ${value.type} messages`,
+      });
     }
   });
 
-export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
+export const createConversationBodySchema = z.object({
+  recipientId: userIdSchema,
+  /** Create the conversation as a draft ("brouillon") — no message sent yet. */
+  draft: z.boolean().optional(),
+  /** First message to send atomically with the conversation creation. */
+  message: sendMessageBodySchema.optional(),
+});
+
+export type ListConversationsQuery = z.infer<
+  typeof listConversationsQuerySchema
+>;
 export type SearchUsersQuery = z.infer<typeof searchUsersQuerySchema>;
-export type CreateConversationBody = z.infer<typeof createConversationBodySchema>;
+export type CreateConversationBody = z.infer<
+  typeof createConversationBodySchema
+>;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
+export type SearchMessagesQuery = z.infer<typeof searchMessagesQuerySchema>;
 export type MessageAttachmentInput = z.infer<typeof messageAttachmentSchema>;
 export type SendMessageBody = z.infer<typeof sendMessageBodySchema>;

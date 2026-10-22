@@ -2,9 +2,14 @@ import { prisma } from "../config/prisma.js";
 import { AppError } from "../lib/errors.js";
 import { WALLET_REFERENCE_PREFIX, generateReference } from "../lib/refs.js";
 import {
+  userFollowRepository,
+  type UserFollowRef,
+} from "../repositories/follow.repository.js";
+import {
   walletRepository,
   type WalletTransactionWithCounterparty,
 } from "../repositories/wallet.repository.js";
+import { getFollowState, type UserFollowState } from "./user.service.js";
 import type {
   InitiateTopupBody,
   ListWalletTransactionsQuery,
@@ -13,6 +18,12 @@ import type {
 import type { Prisma, Wallet } from "../generated/prisma/client.js";
 
 const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED"]);
+
+/** Recipient with follow context — mutual follows are the payment inner circle. */
+export type WalletRecipientWithFollow = UserFollowRef & {
+  isFollowing: boolean;
+  isMutual: boolean;
+};
 
 export type WalletLedgerResult = {
   transaction: WalletTransactionWithCounterparty;
@@ -341,7 +352,11 @@ export const walletService = {
   async getTransactionForUser(
     userId: string,
     id: string,
-  ): Promise<WalletTransactionWithCounterparty> {
+  ): Promise<
+    WalletTransactionWithCounterparty & {
+      counterparty: (UserFollowRef & UserFollowState) | null;
+    }
+  > {
     const wallet = await this.ensureWallet(userId);
     const transaction = await prisma.walletTransaction.findFirst({
       where: { id, walletId: wallet.id },
@@ -350,16 +365,49 @@ export const walletService = {
       },
     });
     if (!transaction) throw AppError.notFound("Wallet transaction");
-    return transaction;
+    if (!transaction.counterparty) {
+      return { ...transaction, counterparty: null };
+    }
+    const followState = await getFollowState(
+      userId,
+      transaction.counterparty.id,
+    );
+    return {
+      ...transaction,
+      counterparty: { ...transaction.counterparty, ...followState },
+    };
   },
 
   // ------------------------------------------------------------ recipients
   /**
-   * Transfer recipients: chat contacts and recent counterparties first,
-   * optionally filtered/extended by a name search across all users.
+   * Transfer recipients: with a search term, similarity matches win outright
+   * (follow flags still attached). Without one, mutual follows first (the
+   * payment inner circle), then the rest of the follow graph, then chat
+   * contacts and recent counterparties.
    */
   async listRecipients(userId: string, search?: string | undefined) {
-    const contactIds = await walletRepository.findContactIds(userId);
+    if (search) {
+      const matches = await walletRepository.searchUsers(userId, search);
+      const ids = matches.map((match) => match.id);
+      const [following, followers] = await Promise.all([
+        userFollowRepository.findAnyFollowingIds(userId, ids),
+        userFollowRepository.findFollowerIds(userId, ids),
+      ]);
+      return matches.map<WalletRecipientWithFollow>((match) => ({
+        ...match,
+        // Any edge (pending request or accepted) marks a pursued contact.
+        isFollowing: following.has(match.id),
+        isMutual: following.has(match.id) && followers.has(match.id),
+      }));
+    }
+
+    const [mutualFollows, followedUsers, pendingOutgoing, contactIds] =
+      await Promise.all([
+        userFollowRepository.findMutualFollowing(userId, 20),
+        userFollowRepository.listFollowing(userId, 20),
+        userFollowRepository.listOutgoingAny(userId, 20),
+        walletRepository.findContactIds(userId),
+      ]);
     const contacts =
       contactIds.length > 0
         ? await walletRepository.findUsersByIds(contactIds)
@@ -369,15 +417,32 @@ export const walletService = {
       string,
       { id: string; name: string; image: string | null }
     >();
-    for (const contact of contacts) merged.set(contact.id, contact);
-
-    if (search) {
-      const matches = await walletRepository.searchUsers(userId, search);
-      for (const match of matches) {
-        if (!merged.has(match.id)) merged.set(match.id, match);
-      }
+    for (const mutual of mutualFollows) merged.set(mutual.id, mutual);
+    for (const followed of followedUsers) {
+      if (!merged.has(followed.id)) merged.set(followed.id, followed);
+    }
+    for (const pending of pendingOutgoing) {
+      if (!merged.has(pending.id)) merged.set(pending.id, pending);
+    }
+    for (const contact of contacts) {
+      if (!merged.has(contact.id)) merged.set(contact.id, contact);
     }
 
-    return [...merged.values()].slice(0, 20);
+    const entries = [...merged.values()].slice(0, 20);
+    const [following, followers] = await Promise.all([
+      userFollowRepository.findAnyFollowingIds(
+        userId,
+        entries.map((entry) => entry.id),
+      ),
+      userFollowRepository.findFollowerIds(
+        userId,
+        entries.map((entry) => entry.id),
+      ),
+    ]);
+    return entries.map<WalletRecipientWithFollow>((entry) => ({
+      ...entry,
+      isFollowing: following.has(entry.id),
+      isMutual: following.has(entry.id) && followers.has(entry.id),
+    }));
   },
 };

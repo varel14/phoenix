@@ -150,6 +150,8 @@ export type SessionUser = {
   email: string;
   role: "USER" | "ARTIST";
   image: string | null;
+  /** Present in better-auth sessions — powers "Membre depuis" on the profile. */
+  createdAt?: string;
 };
 
 // -- Page subscription (2 500 FCFA/mois) & download royalties (1 FCFA/mois) ---

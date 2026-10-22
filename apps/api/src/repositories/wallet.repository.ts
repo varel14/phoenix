@@ -106,15 +106,19 @@ export const walletRepository = {
     });
   },
 
+  /**
+   * Typo-tolerant contact search: PostgreSQL trigram similarity (pg_trgm)
+   * ranked by closeness, with an ILIKE fallback so short prefixes still hit.
+   */
   async searchUsers(userId: string, search: string) {
-    return prisma.user.findMany({
-      where: {
-        id: { not: userId },
-        name: { contains: search, mode: "insensitive" },
-      },
-      select: { id: true, name: true, image: true },
-      take: 20,
-      orderBy: { name: "asc" },
-    });
+    return prisma.$queryRaw<
+      { id: string; name: string; image: string | null }[]
+    >`
+      SELECT "id", "name", "image"
+      FROM "users"
+      WHERE "id" <> ${userId}
+        AND (SIMILARITY("name", ${search}) > 0.1 OR "name" ILIKE ${`%${search}%`})
+      ORDER BY SIMILARITY("name", ${search}) DESC, "name" ASC
+      LIMIT 20`;
   },
 };

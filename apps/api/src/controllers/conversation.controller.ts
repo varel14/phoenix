@@ -3,9 +3,14 @@ import { conversationService } from "../services/conversation.service.js";
 import { sendPaginated, sendSuccess } from "../lib/responses.js";
 import { AppError } from "../lib/errors.js";
 import { emitToConversation, emitToUser } from "../lib/realtime.js";
-import { validatedBody, validatedParams, validatedQuery } from "../middleware/validate.js";
+import {
+  validatedBody,
+  validatedParams,
+  validatedQuery,
+} from "../middleware/validate.js";
 import type { AuthenticatedUser } from "../types/express.d.js";
 import type {
+  SearchMessagesQuery,
   CreateConversationBody,
   ListConversationsQuery,
   ListMessagesQuery,
@@ -32,7 +37,10 @@ export const conversationController = {
   async list(req: Request, res: Response) {
     const user = requireUser(req);
     const query = validatedQuery<ListConversationsQuery>(req);
-    const { conversations, pagination } = await conversationService.list(user.id, query);
+    const { conversations, pagination } = await conversationService.list(
+      user.id,
+      query,
+    );
     sendPaginated(res, conversations, pagination);
   },
 
@@ -46,15 +54,30 @@ export const conversationController = {
   async detail(req: Request, res: Response) {
     const user = requireUser(req);
     const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
-    const conversation = await conversationService.getDetailOrThrow(user.id, id);
+    const conversation = await conversationService.getDetailOrThrow(
+      user.id,
+      id,
+    );
     sendSuccess(res, conversation);
+  },
+
+  async searchMessages(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
+    const { q } = validatedQuery<SearchMessagesQuery>(req);
+    const messages = await conversationService.searchMessages(user.id, id, q);
+    sendSuccess(res, messages);
   },
 
   async listMessages(req: Request, res: Response) {
     const user = requireUser(req);
     const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
     const query = validatedQuery<ListMessagesQuery>(req);
-    const { messages, pagination } = await conversationService.listMessages(user.id, id, query);
+    const { messages, pagination } = await conversationService.listMessages(
+      user.id,
+      id,
+      query,
+    );
     sendPaginated(res, messages, pagination);
   },
 
@@ -62,11 +85,15 @@ export const conversationController = {
     const user = requireUser(req);
     const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
     const body = validatedBody<SendMessageBody>(req);
-    const { message, otherParticipantIds } = await conversationService.sendMessage(user.id, id, body);
+    const { message, otherParticipantIds } =
+      await conversationService.sendMessage(user.id, id, body);
 
     emitToConversation(id, "message:new", { conversationId: id, message });
     for (const participantId of otherParticipantIds) {
-      emitToUser(participantId, "message:received", { conversationId: id, message });
+      emitToUser(participantId, "message:received", {
+        conversationId: id,
+        message,
+      });
     }
     sendSuccess(res, message, 201);
   },
@@ -75,7 +102,11 @@ export const conversationController = {
     const user = requireUser(req);
     const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
     const result = await conversationService.markRead(user.id, id);
-    emitToConversation(id, "message:read", { conversationId: id, userId: user.id, lastReadAt: result.lastReadAt });
+    emitToConversation(id, "message:read", {
+      conversationId: id,
+      userId: user.id,
+      lastReadAt: result.lastReadAt,
+    });
     sendSuccess(res, result);
   },
 };

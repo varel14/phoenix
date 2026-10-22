@@ -4,6 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useWalletTransaction } from "@/hooks/use-wallet";
+import { useFollowUser, useUnfollowUser } from "@/hooks/use-follows";
 import {
   AppText,
   ErrorView,
@@ -16,7 +17,13 @@ import {
   transactionIcon,
   transactionLabel,
 } from "@/components/wallet-transaction-row";
-import { FadeIn, StatusChip, SummaryRow } from "@/components/wallet-ui";
+import {
+  FadeIn,
+  FollowButton,
+  PayBackdrop,
+  StatusChip,
+  SummaryRow,
+} from "@/components/wallet-ui";
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatMoney } from "@/utils/money";
@@ -29,6 +36,21 @@ export default function WalletTransactionDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const query = useWalletTransaction(params.id ?? "");
   const transaction = query.data;
+  const followUser = useFollowUser();
+  const unfollowUser = useUnfollowUser();
+
+  // Follow state lives on the cached counterparty; the follow hooks patch it
+  // optimistically, so this screen updates without extra local state.
+  const counterparty = transaction?.counterparty ?? null;
+  const isFollowing = counterparty?.isFollowing ?? false;
+  const isMutual = counterparty?.isMutual ?? false;
+  const followBusy = followUser.isPending || unfollowUser.isPending;
+
+  function toggleFollow() {
+    if (!counterparty || followBusy) return;
+    const mutation = isFollowing ? unfollowUser : followUser;
+    mutation.mutate(counterparty.id);
+  }
 
   const credit = transaction ? isCredit(transaction) : false;
   const amountColor = credit ? colors.success : colors.text;
@@ -41,6 +63,7 @@ export default function WalletTransactionDetailScreen() {
         paddingTop: insets.top,
       }}
     >
+      <PayBackdrop />
       <View
         style={{
           flexDirection: "row",
@@ -89,13 +112,13 @@ export default function WalletTransactionDetailScreen() {
               }}
             >
               {transaction.counterparty ? (
-                <UserAvatar user={transaction.counterparty} size={64} />
+                <UserAvatar user={transaction.counterparty} size={48} />
               ) : (
                 <View
                   style={[
                     {
-                      width: 64,
-                      height: 64,
+                      width: 48,
+                      height: 48,
                       borderRadius: radii.full,
                       alignItems: "center",
                       justifyContent: "center",
@@ -110,7 +133,7 @@ export default function WalletTransactionDetailScreen() {
                 >
                   <Ionicons
                     name={transactionIcon(transaction.type)}
-                    size={28}
+                    size={22}
                     color={credit ? colors.success : colors.primary}
                   />
                 </View>
@@ -198,7 +221,7 @@ export default function WalletTransactionDetailScreen() {
                   borderColor: colors.hairline,
                 }}
               >
-                <UserAvatar user={transaction.counterparty} size={40} />
+                <UserAvatar user={transaction.counterparty} size={32} />
                 <View style={{ flex: 1 }}>
                   <AppText variant="small" color={colors.textFaint}>
                     Contrepartie
@@ -206,7 +229,21 @@ export default function WalletTransactionDetailScreen() {
                   <AppText variant="subheading" numberOfLines={1}>
                     {transaction.counterparty.name}
                   </AppText>
+                  {isFollowing ? (
+                    <AppText
+                      variant="small"
+                      color={isMutual ? colors.success : colors.textFaint}
+                    >
+                      {isMutual ? "Suivi mutuel" : "Suivi"}
+                    </AppText>
+                  ) : null}
                 </View>
+                <FollowButton
+                  isFollowing={isFollowing}
+                  isMutual={isMutual}
+                  loading={followBusy}
+                  onPress={toggleFollow}
+                />
               </View>
             </FadeIn>
           ) : null}

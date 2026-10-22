@@ -14,6 +14,10 @@ export interface WalletUserRef {
   id: string;
   name: string;
   image: string | null;
+  /** Present on detail endpoints — whether the signed-in user follows them. */
+  isFollowing?: boolean;
+  /** Both users follow each other — the wallet's payment inner circle. */
+  isMutual?: boolean;
 }
 
 export interface WalletTransaction {
@@ -30,8 +34,11 @@ export interface WalletTransaction {
   createdAt: string;
 }
 
-/** A person the user can send money to (contact, recent counterparty, or search match). */
-export type WalletRecipient = WalletUserRef;
+/** A person the user can send money to (follow, contact, or search match). */
+export interface WalletRecipient extends WalletUserRef {
+  isFollowing: boolean;
+  isMutual: boolean;
+}
 
 /** French labels for wallet transaction types (mobile UI). */
 export const WALLET_TYPE_LABELS: Record<WalletTransactionType, string> = {

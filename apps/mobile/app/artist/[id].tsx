@@ -64,9 +64,9 @@ export default function ArtistDetailScreen() {
           </AppText>
 
           {isOwnProfile ? (
-            <View style={{ marginTop: spacing.md }}>
-              <Button label="Manage in artist studio" onPress={() => router.push("/studio")} />
-            </View>
+            <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.md }}>
+              Gérez votre espace créateur depuis l'onglet Profil.
+            </AppText>
           ) : (
             <View style={{ marginTop: spacing.md, flexDirection: "row", gap: spacing.sm }}>
               <View style={{ flex: 1 }}>

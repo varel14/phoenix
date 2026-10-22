@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -13,6 +13,7 @@ import {
   invalidateStudioQueries,
 } from "@/hooks/use-library";
 import { useFavoriteIds } from "@/hooks/use-catalog";
+import { useAuthStore } from "@/stores/auth-store";
 import { artistsApi } from "@/services/api/artists-api";
 import {
   AppText,
@@ -40,7 +41,14 @@ export default function StudioScreen() {
   const videos = useArtistVideos(myArtist.data?.id ?? "");
   const [chartMetric, setChartMetric] = useState<"plays" | "views">("plays");
 
-  if (myArtist.isLoading) return <LoadingView />;
+  // The studio is reached from the profile tab only — bounce anyone who
+  // lands here by deep link without a creator account.
+  const isArtist = useAuthStore((state) => state.user?.role === "ARTIST");
+  useEffect(() => {
+    if (!isArtist) router.replace("/(tabs)/profile");
+  }, [isArtist, router]);
+
+  if (!isArtist || myArtist.isLoading) return <LoadingView />;
   if (myArtist.isError) {
     return (
       <ErrorView

@@ -1,12 +1,16 @@
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
+  Modal,
   Pressable,
   StyleSheet,
   TextInput,
   View,
   type TextInputProps,
 } from "react-native";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
@@ -291,89 +295,178 @@ export interface MenuAction {
   onPress: () => void;
 }
 
+/**
+ * Instagram-style bottom action sheet. Rendered through a RN `Modal` — an
+ * inline absolute overlay would be clipped to the row it is anchored in.
+ */
+const SHEET_SLIDE_DISTANCE = 360;
+
 export function ContextMenu({ actions }: { actions: MenuAction[] }) {
-  const [visible, setVisible] = useState(false);
-  const { colors, radii, shadows } = useTheme();
+  const [open, setOpen] = useState(false);
+  const { colors, radii } = useTheme();
+  const insets = useSafeAreaInsets();
+  const progress = useRef(new Animated.Value(0)).current;
+
+  const close = useCallback(() => {
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: 170,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => setOpen(false));
+  }, [progress]);
+
+  useEffect(() => {
+    if (open) {
+      Animated.spring(progress, {
+        toValue: 1,
+        speed: 32,
+        bounciness: 4,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [open, progress]);
 
   return (
     <>
       <IconButton
         icon="ellipsis-vertical"
-        onPress={() => setVisible(true)}
-        accessibilityLabel="More options"
+        onPress={() => setOpen(true)}
+        accessibilityLabel="Plus d’options"
       />
-      {visible ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setVisible(false)}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: colors.scrim,
-            zIndex: 100,
-            justifyContent: "center",
-            paddingHorizontal: spacing.xl,
-          }}
-        >
-          <Pressable onPress={() => {}}>
-            <View
-              style={{
-                backgroundColor: colors.surfaceElevated,
-                borderRadius: radii.xl,
-                paddingVertical: spacing.sm,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: colors.hairline,
-                boxShadow: shadows.float,
-              }}
-            >
-              {actions.map((action) => {
-                const name =
-                  action.icon ??
-                  GLYPH_MAP[action.glyph ?? ""] ??
-                  "ellipse-outline";
-                return (
-                  <Pressable
-                    key={action.label}
-                    onPress={() => {
-                      setVisible(false);
-                      action.onPress();
-                    }}
-                    style={({ pressed }) => ({
-                      flexDirection: "row",
+      <Modal
+        transparent
+        visible={open}
+        animationType="none"
+        onRequestClose={close}
+      >
+        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Fermer le menu">
+          <Animated.View
+            style={{
+              flex: 1,
+              backgroundColor: colors.scrim,
+              opacity: progress,
+              justifyContent: "flex-end",
+            }}
+          >
+            {/* Block presses inside the sheet from dismissing it. */}
+            <Pressable onPress={() => {}}>
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      translateY: progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [SHEET_SLIDE_DISTANCE, 0],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: colors.surfaceElevated,
+                    borderTopLeftRadius: radii.xl,
+                    borderTopRightRadius: radii.xl,
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: colors.hairline,
+                    paddingBottom: insets.bottom + spacing.sm,
+                  }}
+                >
+                  <View
+                    style={{
                       alignItems: "center",
-                      gap: spacing.md,
-                      paddingHorizontal: spacing.lg,
-                      paddingVertical: spacing.md,
+                      paddingTop: spacing.sm,
+                      paddingBottom: spacing.xs,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 4,
+                        borderRadius: radii.full,
+                        backgroundColor: colors.surfaceHighlight,
+                      }}
+                    />
+                  </View>
+                  {actions.map((action, index) => {
+                    const name =
+                      action.icon ??
+                      GLYPH_MAP[action.glyph ?? ""] ??
+                      "ellipse-outline";
+                    return (
+                      <Pressable
+                        key={action.label}
+                        accessibilityRole="button"
+                        onPress={() => {
+                          close();
+                          action.onPress();
+                        }}
+                        style={({ pressed }) => ({
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: spacing.md,
+                          paddingHorizontal: spacing.xl,
+                          height: 52,
+                          borderTopWidth:
+                            index === 0 ? 0 : StyleSheet.hairlineWidth,
+                          borderTopColor: colors.hairline,
+                          backgroundColor: pressed
+                            ? colors.surfaceHighlight
+                            : "transparent",
+                        })}
+                      >
+                        <Ionicons
+                          name={name}
+                          size={20}
+                          color={
+                            action.destructive ? colors.danger : colors.textMuted
+                          }
+                        />
+                        <AppText
+                          style={{
+                            color: action.destructive
+                              ? colors.danger
+                              : colors.text,
+                            fontSize: 15,
+                            fontWeight: action.destructive ? "600" : "400",
+                          }}
+                        >
+                          {action.label}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={close}
+                    style={({ pressed }) => ({
+                      height: 52,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: colors.hairline,
                       backgroundColor: pressed
                         ? colors.surfaceHighlight
                         : "transparent",
                     })}
                   >
-                    <Ionicons
-                      name={name}
-                      size={20}
-                      color={
-                        action.destructive ? colors.danger : colors.textMuted
-                      }
-                    />
                     <AppText
                       style={{
-                        color: action.destructive ? colors.danger : colors.text,
+                        color: colors.text,
                         fontSize: 15,
+                        fontWeight: "700",
                       }}
                     >
-                      {action.label}
+                      Annuler
                     </AppText>
                   </Pressable>
-                );
-              })}
-            </View>
-          </Pressable>
+                </View>
+              </Animated.View>
+            </Pressable>
+          </Animated.View>
         </Pressable>
-      ) : null}
+      </Modal>
     </>
   );
 }

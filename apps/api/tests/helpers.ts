@@ -23,6 +23,7 @@ export async function truncateAll() {
   await prisma.$executeRawUnsafe(
     `TRUNCATE users, sessions, accounts, verifications, artists, songs, videos,
      favorites, playlists, playlist_items, downloads, playback_events, artist_follows,
+     user_follows,
      page_subscriptions, download_royalties,
      conversations, conversation_participants, messages, message_attachments, calls,
      push_tokens,

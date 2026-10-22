@@ -16,10 +16,10 @@ import {
   IconButton,
 } from "@/components/ui";
 import {
-  isCredit,
+  monthInOut,
   WalletTransactionRow,
 } from "@/components/wallet-transaction-row";
-import { Chip, FadeIn } from "@/components/wallet-ui";
+import { Chip, FadeIn, PayBackdrop } from "@/components/wallet-ui";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatAmount } from "@/utils/money";
@@ -79,24 +79,7 @@ export default function WalletTransactionsScreen() {
   }, [transactions]);
 
   // In/out for the current month, from the loaded page.
-  const monthTotals = useMemo(() => {
-    const now = new Date();
-    return transactions.reduce(
-      (totals, transaction) => {
-        const date = new Date(transaction.createdAt);
-        if (
-          transaction.status === "SUCCESS" &&
-          date.getMonth() === now.getMonth() &&
-          date.getFullYear() === now.getFullYear()
-        ) {
-          if (isCredit(transaction)) totals.in += transaction.amount;
-          else totals.out += transaction.amount;
-        }
-        return totals;
-      },
-      { in: 0, out: 0 },
-    );
-  }, [transactions]);
+  const monthTotals = monthInOut(transactions);
 
   return (
     <View
@@ -106,6 +89,7 @@ export default function WalletTransactionsScreen() {
         paddingTop: insets.top,
       }}
     >
+      <PayBackdrop />
       <View
         style={{
           flexDirection: "row",

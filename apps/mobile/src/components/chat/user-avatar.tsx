@@ -4,7 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { AppText } from "@/components/ui";
 import { radii } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { artworkGradient } from "@/utils/format";
+import { profileGradient } from "@/utils/format";
+import { resolveAssetUrl } from "@/services/api/api-client";
 import type { ConversationUser } from "@/types/chat";
 
 interface UserAvatarProps {
@@ -12,7 +13,10 @@ interface UserAvatarProps {
   size?: number;
 }
 
-/** Contact avatar with deterministic gradient + initials fallback. */
+/**
+ * Contact avatar: the account's personal photo when one is set, otherwise
+ * initials over a deterministic brand-violet gradient.
+ */
 export function UserAvatar({ user, size = 48 }: UserAvatarProps) {
   const { colors, isDark } = useTheme();
   const radius = size / 2;
@@ -20,21 +24,23 @@ export function UserAvatar({ user, size = 48 }: UserAvatarProps) {
   if (user.image) {
     return (
       <Image
-        source={{ uri: user.image }}
+        source={{ uri: resolveAssetUrl(user.image) }}
         style={{
           width: size,
           height: size,
           borderRadius: radius,
           borderWidth: StyleSheet.hairlineWidth,
           // Pure black/white outline (never tinted) so photo edges stay crisp on any surface.
-          borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+          borderColor: isDark
+            ? "rgba(255, 255, 255, 0.1)"
+            : "rgba(0, 0, 0, 0.1)",
         }}
         contentFit="cover"
       />
     );
   }
 
-  const { from, to } = artworkGradient(user.id);
+  const { from, to } = profileGradient(user.id);
   const initials = user.name
     .split(/\s+/)
     .map((part) => part.charAt(0).toUpperCase())
@@ -46,9 +52,19 @@ export function UserAvatar({ user, size = 48 }: UserAvatarProps) {
       colors={[from, to]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={{ width: size, height: size, borderRadius: radius, alignItems: "center", justifyContent: "center" }}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
-      <AppText style={{ color: colors.onPrimary, fontSize: size * 0.36, fontWeight: "700" }}>{initials}</AppText>
+      <AppText
+        style={{ color: "#FFFFFF", fontSize: size * 0.36, fontWeight: "700" }}
+      >
+        {initials}
+      </AppText>
     </LinearGradient>
   );
 }

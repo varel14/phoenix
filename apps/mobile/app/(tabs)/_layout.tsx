@@ -129,6 +129,11 @@ export default function TabsLayout() {
             right: spacing.lg,
             bottom: insets.bottom + BAR_FLOAT,
             height: TAB_BAR_HEIGHT,
+            // v7's default bar style injects paddingBottom: insets.bottom,
+            // which shrinks the content box and pushes the icons off-center.
+            // The bar floats fully above the home indicator, so zero both.
+            paddingTop: 0,
+            paddingBottom: 0,
             backgroundColor: withAlpha(colors.surface, 0.97),
             borderRadius: TAB_BAR_HEIGHT / 2,
             borderTopWidth: 0,
@@ -183,8 +188,8 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="explore"
           options={{
-            title: "Artistes",
-            tabBarLabel: tabLabel("Artistes"),
+            title: "Explorer",
+            tabBarLabel: tabLabel("Explorer"),
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? "search" : "search-outline"}
@@ -194,20 +199,8 @@ export default function TabsLayout() {
             ),
           }}
         />
-        <Tabs.Screen
-          name="library"
-          options={{
-            title: "Bibliothèque",
-            tabBarLabel: tabLabel("Biblio"),
-            tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? "library" : "library-outline"}
-                size={22}
-                color={color}
-              />
-            ),
-          }}
-        />
+        {/* Hidden from the bar; reachable via the homepage quick action. */}
+        <Tabs.Screen name="library" options={{ href: null }} />
         <Tabs.Screen
           name="profile"
           options={{

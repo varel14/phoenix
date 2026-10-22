@@ -18,7 +18,14 @@ import {
   IconButton,
   LoadingView,
 } from "@/components/ui";
-import { Chip, FadeIn, StatusChip, SuccessHero, SummaryRow } from "@/components/wallet-ui";
+import {
+  Chip,
+  FadeIn,
+  PayBackdrop,
+  StatusChip,
+  SuccessHero,
+  SummaryRow,
+} from "@/components/wallet-ui";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatAmount, formatMoney } from "@/utils/money";
@@ -123,6 +130,7 @@ export default function TopUpScreen() {
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <PayBackdrop />
         {header}
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -225,6 +233,7 @@ export default function TopUpScreen() {
   if (step === "pending" || !transaction) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <PayBackdrop />
         {header}
         {error ? (
           <View style={{ padding: spacing.lg }}>
@@ -239,6 +248,7 @@ export default function TopUpScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <PayBackdrop />
       {header}
       <ScrollView
         contentContainerStyle={{

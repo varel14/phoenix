@@ -182,6 +182,12 @@ export default function HomeScreen() {
           }}
         >
           <QuickAction
+            label="Biblio"
+            accessibilityLabel="Bibliothèque"
+            icon="library-outline"
+            onPress={() => router.push("/library")}
+          />
+          <QuickAction
             label="Payer"
             icon="card"
             highlighted
@@ -575,9 +581,9 @@ function ArtistPill({
     <Pressable
       accessibilityRole="button"
       onPress={() => router.push(`/artist/${id}`)}
-      style={{ width: 88, alignItems: "center", gap: spacing.xs }}
+      style={{ width: 68, alignItems: "center", gap: spacing.xs }}
     >
-      <Artwork uri={avatarUrl} seed={id} label={name} size={80} radius={40} />
+      <Artwork uri={avatarUrl} seed={id} label={name} size={60} radius={30} fallback="brand" />
       <AppText
         variant="caption"
         numberOfLines={1}
@@ -609,7 +615,10 @@ function Section({
           marginBottom: spacing.md,
         }}
       >
-        <AppText variant="heading" style={{ flex: 1 }}>
+        <AppText
+          variant="subheading"
+          style={{ flex: 1, fontWeight: "700" }}
+        >
           {title}
         </AppText>
         {action ? (

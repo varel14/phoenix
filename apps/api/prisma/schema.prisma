@@ -182,6 +182,8 @@ model user {
   downloads      Download[]
   playbackEvents PlaybackEvent[]
   follows        ArtistFollow[]
+  userFollowing  UserFollow[]   @relation("UserFollowFollower")
+  userFollowers  UserFollow[]   @relation("UserFollowFollowing")
   pageSubscriptions PageSubscription[]
   paidRoyalties  DownloadRoyalty[]
   conversationMemberships ConversationParticipant[]
@@ -290,6 +292,25 @@ model ArtistFollow {
   @@index([artistId])
   @@map("artist_follows")
 }
+
+/// User-to-user follow graph — mutual ACCEPTED follows are wallet payment
+/// partners and unlock chatting. New follows start as PENDING requests; the
+/// recipient accepts (ACCEPTED) from the notifications screen.
+model UserFollow {
+  id          String           @id @default(uuid())
+  followerId  String           @map("follower_id")
+  followingId String           @map("following_id")
+  status      String           @default("PENDING")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  follower  user @relation("UserFollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following user @relation("UserFollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId, status])
+  @@map("user_follows")
+}
+
 
 // ---------------------------------------------------------------------------
 // Music catalog
@@ -508,6 +529,9 @@ model PlaybackEvent {
 model Conversation {
   id        String           @id @default(uuid())
   type      ConversationType @default(DIRECT)
+  // Draft ("brouillon"): created by exiting the composer with text but
+  // without sending. Promoted to a real conversation on the first message.
+  isDraft   Boolean          @default(false) @map("is_draft")
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 

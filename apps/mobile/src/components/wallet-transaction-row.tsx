@@ -42,7 +42,7 @@ export function isCredit(transaction: WalletTransaction): boolean {
   return transaction.type === "TOPUP" || transaction.type === "TRANSFER_IN";
 }
 
-/** Compact time for row subtitles: HH:MM today, otherwise "12 mai". */
+/** "Aujourd'hui · 09:24" / "Hier · 13:42" / "12 mai · 13:42" — reference row subtitle. */
 function formatRowTime(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
@@ -50,14 +50,38 @@ function formatRowTime(iso: string): string {
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
+  ).getTime();
+  const time = date.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (date.getTime() >= startOfToday) return `Aujourd'hui · ${time}`;
+  if (date.getTime() >= startOfToday - 86_400_000) return `Hier · ${time}`;
+  const day = date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return `${day} · ${time}`;
+}
+
+/** Successful in/out sums for the current month — the Overview stat cards. */
+export function monthInOut(transactions: WalletTransaction[]): {
+  in: number;
+  out: number;
+} {
+  const now = new Date();
+  return transactions.reduce(
+    (totals, transaction) => {
+      const date = new Date(transaction.createdAt);
+      if (
+        transaction.status === "SUCCESS" &&
+        date.getMonth() === now.getMonth() &&
+        date.getFullYear() === now.getFullYear()
+      ) {
+        if (isCredit(transaction)) totals.in += transaction.amount;
+        else totals.out += transaction.amount;
+      }
+      return totals;
+    },
+    { in: 0, out: 0 },
   );
-  if (date.getTime() >= startOfToday.getTime()) {
-    return date.toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 }
 
 export function WalletTransactionRow({
@@ -78,11 +102,7 @@ export function WalletTransactionRow({
         flexDirection: "row",
         alignItems: "center",
         gap: spacing.md,
-        padding: spacing.md,
-        backgroundColor: colors.surface,
-        borderRadius: radii.xl,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.hairline,
+        paddingVertical: spacing.sm + 2,
       }}
     >
       {counterparty ? (
@@ -92,7 +112,7 @@ export function WalletTransactionRow({
           style={{
             width: 44,
             height: 44,
-            borderRadius: radii.lg,
+            borderRadius: radii.md,
             backgroundColor: withAlpha(
               credit ? colors.success : colors.primary,
               0.14,
@@ -103,25 +123,26 @@ export function WalletTransactionRow({
         >
           <Ionicons
             name={transactionIcon(transaction.type)}
-            size={20}
+            size={19}
             color={credit ? colors.success : colors.primary}
           />
         </View>
       )}
       <View style={{ flex: 1, gap: 2 }}>
-        <AppText variant="subheading" numberOfLines={1}>
+        <AppText numberOfLines={1} style={{ fontSize: 15, fontWeight: "600" }}>
           {counterparty?.name ?? WALLET_TYPE_LABELS[transaction.type]}
         </AppText>
         <AppText variant="small" color={colors.textFaint} numberOfLines={1}>
-          {WALLET_TYPE_LABELS[transaction.type]} · {formatRowTime(transaction.createdAt)}
+          {formatRowTime(transaction.createdAt)}
         </AppText>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>
         <AppText
           style={{
+            fontSize: 15,
             fontWeight: "700",
             fontVariant: ["tabular-nums"],
-            color: credit ? colors.success : colors.text,
+            color: credit ? colors.success : colors.danger,
           }}
         >
           {credit ? "+" : "−"}

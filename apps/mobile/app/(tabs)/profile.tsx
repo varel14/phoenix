@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Alert, Animated, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
@@ -8,13 +8,17 @@ import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme, useThemeModeStore, type ThemeMode } from "@/theme/theme-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import { usePreferencesStore, type AudioQuality } from "@/stores/preferences-store";
-import { useFollowing, useMyArtist, useArtistStats } from "@/hooks/use-library";
+import { useDownloadsStore } from "@/services/downloads/download-manager";
+import { useFavorites, useFollowing, useMyArtist, useArtistStats } from "@/hooks/use-library";
+import { useCart, useOrders } from "@/hooks/use-market";
+import { useWallet } from "@/hooks/use-wallet";
 import { useQuery } from "@tanstack/react-query";
 import { subscriptionsApi } from "@/services/api/subscriptions-api";
 import { queryKeys } from "@/constants/query-keys";
 import { AppText, Card, PressableScale } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
 import { BecomeArtistModal } from "@/components/profile/become-artist-modal";
+import { EditProfileModal } from "@/components/profile/edit-profile-modal";
 import { formatCount } from "@/utils/format";
 import { formatMoney } from "@/utils/money";
 import type { ArtistStats } from "@/types/api";
@@ -55,6 +59,36 @@ export default function ProfileScreen() {
   const pushNotifications = usePreferencesStore((state) => state.pushNotifications);
   const setPushNotifications = usePreferencesStore((state) => state.setPushNotifications);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+
+  // Listener stats + wallet/shopping shortcuts (all real data, lazy queries).
+  const walletQuery = useWallet();
+  const cartQuery = useCart();
+  const ordersQuery = useOrders();
+  const favoritesQuery = useFavorites();
+  const downloadItems = useDownloadsStore((state) => state.items);
+
+  const memberSince = useMemo(() => {
+    if (!user?.createdAt) return null;
+    return new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(
+      new Date(user.createdAt),
+    );
+  }, [user?.createdAt]);
+
+  function confirmSignOut() {
+    Alert.alert(
+      "Se déconnecter ?",
+      "Vous devrez vous reconnecter pour accéder à votre compte.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Se déconnecter",
+          style: "destructive",
+          onPress: () => void signOut(),
+        },
+      ],
+    );
+  }
 
   if (!user) return null;
 
@@ -68,57 +102,164 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 180, gap: spacing.xl }}>
-      {/* Identity hero on the brand gradient */}
-      <LinearGradient
-        colors={gradients.brand}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{
-          borderRadius: radii.xl,
-          padding: spacing.xl,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.lg,
-        }}
-      >
-        <View
-          style={{
-            width: 92,
-            height: 92,
-            borderRadius: radii.full,
-            backgroundColor: "rgba(10, 10, 10, 0.85)",
-            padding: 3,
-          }}
+      {/* Centered identity header — avatar on a brand ring, name, edit pill */}
+      <View style={{ alignItems: "center", paddingTop: spacing.md }}>
+        <PressableScale
+          onPress={() => setEditModalOpen(true)}
+          scaleTo={0.96}
+          accessibilityLabel="Modifier mon profil"
         >
-          <Artwork uri={user.image} seed={user.id} label={user.name} size={86} radius={radii.full} />
-        </View>
-        <View style={{ flex: 1, gap: 7 }}>
-          <AppText variant="heading" color={colors.onPrimary} numberOfLines={2} style={{ fontSize: 22 }}>
-            {user.name}
-          </AppText>
-          <AppText variant="caption" color="rgba(10, 10, 10, 0.72)" numberOfLines={1}>
+          <View>
+            {/* Brand-gradient ring around the avatar */}
+            <LinearGradient
+              colors={gradients.brand}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ width: 126, height: 126, borderRadius: radii.full, padding: 3 }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  borderRadius: radii.full,
+                  backgroundColor: colors.background,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Artwork uri={user.image} seed={user.id} label={user.name} size={114} radius={radii.full} />
+              </View>
+            </LinearGradient>
+
+            {/* Account-type badge straddling the ring's bottom edge */}
+            <View
+              pointerEvents="none"
+              style={{ position: "absolute", bottom: -6, left: 0, right: 0, alignItems: "center" }}
+            >
+              {isArtist ? (
+                <LinearGradient
+                  colors={gradients.brand}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    borderRadius: radii.full,
+                    borderWidth: 2,
+                    borderColor: colors.background,
+                    paddingHorizontal: spacing.sm + 2,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <Ionicons name="mic" size={10} color={colors.onPrimary} />
+                  <AppText style={{ color: colors.onPrimary, fontSize: 9, fontWeight: "800", letterSpacing: 1 }}>
+                    CRÉATEUR
+                  </AppText>
+                </LinearGradient>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    borderRadius: radii.full,
+                    borderWidth: 2,
+                    borderColor: colors.background,
+                    backgroundColor: "rgba(10, 10, 10, 0.78)",
+                    paddingHorizontal: spacing.sm + 2,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <Ionicons name="headset-outline" size={10} color={colors.onPrimary} />
+                  <AppText style={{ color: colors.onPrimary, fontSize: 9, fontWeight: "800", letterSpacing: 1 }}>
+                    AUDITEUR
+                  </AppText>
+                </View>
+              )}
+            </View>
+
+            {/* Camera badge — the avatar is a shortcut into the editor */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                right: 4,
+                bottom: 10,
+                width: 30,
+                height: 30,
+                borderRadius: radii.full,
+                borderWidth: 3,
+                borderColor: colors.background,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="camera" size={13} color={colors.onPrimary} />
+            </View>
+          </View>
+        </PressableScale>
+
+        <View style={{ alignItems: "center", gap: 4, marginTop: spacing.lg }}>
+          <AppText variant="title">{user.name}</AppText>
+          <AppText variant="caption" color={colors.textMuted} numberOfLines={1}>
             {user.email}
           </AppText>
+          {memberSince ? (
+            <AppText variant="small" color={colors.textFaint}>
+              Membre depuis {memberSince}
+            </AppText>
+          ) : null}
+        </View>
+
+        <PressableScale
+          onPress={() => setEditModalOpen(true)}
+          scaleTo={0.96}
+          accessibilityLabel="Modifier mon profil"
+          style={{ marginTop: spacing.lg }}
+        >
           <View
             style={{
-              alignSelf: "flex-start",
+              height: 38,
+              paddingHorizontal: spacing.xl,
+              borderRadius: radii.full,
+              borderWidth: 1,
+              borderColor: withAlpha(colors.primary, 0.45),
+              backgroundColor: colors.primaryTint,
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              backgroundColor: "rgba(10, 10, 10, 0.16)",
-              borderRadius: radii.full,
-              paddingHorizontal: spacing.sm + 2,
-              paddingVertical: 4,
-              marginTop: 2,
+              justifyContent: "center",
+              gap: spacing.sm,
             }}
           >
-            <Ionicons name={isArtist ? "mic" : "headset-outline"} size={11} color={colors.onPrimary} />
-            <AppText style={{ color: colors.onPrimary, fontSize: 10, fontWeight: "800", letterSpacing: 1.2 }}>
-              {isArtist ? "COMPTE CRÉATEUR" : "AUDITEUR"}
+            <Ionicons name="pencil" size={14} color={colors.primary} />
+            <AppText style={{ color: colors.primary, fontSize: 13, fontWeight: "700" }}>
+              Modifier le profil
             </AppText>
           </View>
-        </View>
-      </LinearGradient>
+        </PressableScale>
+      </View>
+
+      {/* Listener stats — live counts from the library */}
+      <Card style={{ flexDirection: "row", paddingVertical: spacing.lg }}>
+        <StatsTile
+          value={following.data?.pagination.total ?? (following.data?.data.length ?? 0)}
+          label="Suivis"
+          onPress={() => router.push("/explore")}
+        />
+        <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: colors.hairline }} />
+        <StatsTile
+          value={favoritesQuery.data?.pagination.total ?? (favoritesQuery.data?.data.length ?? 0)}
+          label="Favoris"
+          onPress={() => router.push("/library")}
+        />
+        <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: colors.hairline }} />
+        <StatsTile
+          value={Object.keys(downloadItems).length}
+          label="Téléch."
+          onPress={() => router.push("/library")}
+        />
+      </Card>
 
       {/* Premium entry */}
       <PressableScale
@@ -182,6 +323,31 @@ export default function ProfileScreen() {
           </View>
         )}
       </PressableScale>
+
+      {/* Wallet & shopping */}
+      <Section label="Portefeuille & achats">
+        <SettingsRow
+          icon="wallet-outline"
+          label="Chuyassi Pay"
+          sublabel="Transferts et rechargements"
+          onPress={() => router.push("/pay")}
+          right={<RowValue chevron>{walletQuery.data ? formatMoney(walletQuery.data.balance, walletQuery.data.currency) : undefined}</RowValue>}
+        />
+        <RowDivider />
+        <SettingsRow
+          icon="cart-outline"
+          label="Mon panier"
+          onPress={() => router.push("/boutique/cart")}
+          right={<RowValue chevron>{cartQuery.data?.itemCount ? `${cartQuery.data.itemCount}` : "Vide"}</RowValue>}
+        />
+        <RowDivider />
+        <SettingsRow
+          icon="bag-handle-outline"
+          label="Mes commandes"
+          onPress={() => router.push("/boutique/orders")}
+          right={<RowValue chevron>{String(ordersQuery.data?.pagination.total ?? 0)}</RowValue>}
+        />
+      </Section>
 
       {/* Preferences */}
       <Section label="Apparence & lecture">
@@ -291,7 +457,7 @@ export default function ProfileScreen() {
           icon="log-out-outline"
           label={isSigningOut ? "Déconnexion…" : "Se déconnecter"}
           destructive
-          onPress={() => void signOut()}
+          onPress={confirmSignOut}
           right={isSigningOut ? <ActivityIndicator color={colors.danger} /> : undefined}
         />
       </Section>
@@ -314,7 +480,34 @@ export default function ProfileScreen() {
       </View>
 
       <BecomeArtistModal visible={creatorModalOpen} onClose={() => setCreatorModalOpen(false)} />
+      <EditProfileModal visible={editModalOpen} onClose={() => setEditModalOpen(false)} />
     </ScrollView>
+  );
+}
+
+/** One live count in the stats strip; taps land in the relevant tab. */
+function StatsTile({ value, label, onPress }: { value: number; label: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${value} ${label}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        alignItems: "center",
+        gap: 3,
+        paddingVertical: 2,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <AppText variant="subheading" color={colors.primary} style={{ fontVariant: ["tabular-nums"] }}>
+        {formatCount(value)}
+      </AppText>
+      <AppText variant="caption" style={{ color: colors.textMuted, fontSize: 12 }}>
+        {label}
+      </AppText>
+    </Pressable>
   );
 }
 
@@ -501,7 +694,7 @@ function SettingsRow({ icon, avatar, label, sublabel, destructive, onPress, righ
           style={{
             width: 36,
             height: 36,
-            borderRadius: radii.md,
+            borderRadius: radii.full,
             backgroundColor: destructive ? withAlpha(colors.danger, 0.12) : colors.primaryTint,
             alignItems: "center",
             justifyContent: "center",

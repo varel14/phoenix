@@ -1,4 +1,6 @@
 import { prisma } from "../config/prisma.js";
+import { userFollowRepository } from "../repositories/follow.repository.js";
+import { areMutualFollows, FOLLOW_REQUIRED_CODE } from "./user.service.js";
 import { AppError } from "../lib/errors.js";
 import { buildPagination, type PaginationMeta } from "../lib/responses.js";
 import type {
@@ -23,7 +25,10 @@ export const conversationService = {
   async list(
     userId: string,
     query: ListConversationsQuery,
-  ): Promise<{ conversations: ConversationSummary[]; pagination: PaginationMeta }> {
+  ): Promise<{
+    conversations: ConversationSummary[];
+    pagination: PaginationMeta;
+  }> {
     const [conversations, total] = await Promise.all([
       conversationRepository.findManyByUser(userId, query),
       conversationRepository.countByUser(userId),
@@ -31,49 +36,128 @@ export const conversationService = {
 
     const conversationsWithMeta = await Promise.all(
       conversations.map(async (conversation) => {
-        const participant = conversation.participants.find((p) => p.userId === userId);
+        const participant = conversation.participants.find(
+          (p) => p.userId === userId,
+        );
         const [lastMessage, unreadCount] = await Promise.all([
           conversationRepository.lastMessage(conversation.id),
-          conversationRepository.unreadCount(conversation.id, userId, participant?.lastReadAt ?? null),
+          conversationRepository.unreadCount(
+            conversation.id,
+            userId,
+            participant?.lastReadAt ?? null,
+          ),
         ]);
         return { ...conversation, lastMessage, unreadCount };
       }),
     );
 
-    return { conversations: conversationsWithMeta, pagination: buildPagination(query.page, query.limit, total) };
+    return {
+      conversations: conversationsWithMeta,
+      pagination: buildPagination(query.page, query.limit, total),
+    };
   },
 
-  /** Users matching a name search, excluding the requester (picker data only). */
+  /** Typo-tolerant user search (pg_trgm), with the follow state per contact. */
   async searchUsers(userId: string, search: string) {
-    return prisma.user.findMany({
-      where: {
-        id: { not: userId },
-        name: { contains: search, mode: "insensitive" },
-      },
-      select: { id: true, name: true, image: true },
-      take: 20,
-      orderBy: { name: "asc" },
+    const users = await conversationRepository.searchUsers(userId, search);
+    const ids = users.map((user) => user.id);
+    const [outgoing, followers, pendingIncoming] = await Promise.all([
+      userFollowRepository.findEdgesFrom(userId, ids),
+      userFollowRepository.findFollowerIds(userId, ids),
+      userFollowRepository.findPendingIncomingIds(userId, ids),
+    ]);
+    return users.map((user) => {
+      const status = outgoing.get(user.id);
+      const followsMe = followers.has(user.id);
+      const follow: "none" | "pending" | "accepted" | "mutual" =
+        status === "ACCEPTED" && followsMe
+          ? "mutual"
+          : status === "ACCEPTED"
+            ? "accepted"
+            : status === "PENDING" || pendingIncoming.has(user.id)
+              ? "pending"
+              : "none";
+      return { ...user, follow };
     });
   },
 
-  async createDirect(userId: string, body: CreateConversationBody): Promise<ConversationWithParticipants> {    if (body.recipientId === userId) {
-      throw AppError.badRequest("You cannot start a conversation with yourself");
+  /** Typo-tolerant message search inside one conversation (pg_trgm). */
+  async searchMessages(userId: string, conversationId: string, query: string) {
+    await this.getDetailOrThrow(userId, conversationId);
+    return conversationRepository.searchMessages(conversationId, query);
+  },
+
+  async createDirect(
+    userId: string,
+    body: CreateConversationBody,
+  ): Promise<ConversationWithParticipants> {
+    if (body.recipientId === userId) {
+      throw AppError.badRequest(
+        "You cannot start a conversation with yourself",
+      );
     }
-    const recipient = await prisma.user.findUnique({ where: { id: body.recipientId }, select: { id: true } });
+    const recipient = await prisma.user.findUnique({
+      where: { id: body.recipientId },
+      select: { id: true },
+    });
     if (!recipient) throw AppError.notFound("User");
 
-    const existing = await conversationRepository.findDirectConversation(userId, body.recipientId);
-    if (existing) {
-      const conversation = await conversationRepository.findByIdForUser(existing.id, userId);
-      if (conversation) return conversation;
+    // Chatting requires a mutual ACCEPTED follow with the recipient.
+    if (!(await areMutualFollows(userId, body.recipientId))) {
+      throw new AppError(
+        403,
+        FOLLOW_REQUIRED_CODE,
+        "Vous pourrez discuter ensemble une fois la demande de suivi acceptée",
+      );
     }
-    return conversationRepository.createDirectConversation(userId, body.recipientId);
+
+    const existing = await conversationRepository.findDirectConversation(
+      userId,
+      body.recipientId,
+    );
+    if (existing) {
+      const conversation = await conversationRepository.findByIdForUser(
+        existing.id,
+        userId,
+      );
+      if (conversation) {
+        // An attached first message is delivered even when the conversation
+        // already exists (e.g. re-selecting a contact with a draft pending).
+        if (body.message) {
+          await this.sendMessage(userId, conversation.id, body.message);
+          return (await conversationRepository.findByIdForUser(
+            conversation.id,
+            userId,
+          )) as ConversationWithParticipants;
+        }
+        return conversation;
+      }
+    }
+    return conversationRepository.createDirectConversation(
+      userId,
+      body.recipientId,
+      {
+        isDraft: body.draft ?? false,
+        ...(body.message
+          ? { firstMessage: { senderId: userId, data: body.message } }
+          : {}),
+      },
+    );
   },
 
   /** Throws unless the user takes part in the conversation. */
-  async getDetailOrThrow(userId: string, conversationId: string): Promise<ConversationWithParticipants> {
-    const conversation = await conversationRepository.findByIdForUser(conversationId, userId);
-    if (!conversation) throw AppError.forbidden("You are not a participant of this conversation");
+  async getDetailOrThrow(
+    userId: string,
+    conversationId: string,
+  ): Promise<ConversationWithParticipants> {
+    const conversation = await conversationRepository.findByIdForUser(
+      conversationId,
+      userId,
+    );
+    if (!conversation)
+      throw AppError.forbidden(
+        "You are not a participant of this conversation",
+      );
     return conversation;
   },
 
@@ -87,7 +171,10 @@ export const conversationService = {
       messageRepository.findMany(conversationId, query),
       messageRepository.count(conversationId),
     ]);
-    return { messages, pagination: buildPagination(query.page, query.limit, total) };
+    return {
+      messages,
+      pagination: buildPagination(query.page, query.limit, total),
+    };
   },
 
   async sendMessage(
@@ -96,16 +183,33 @@ export const conversationService = {
     body: SendMessageBody,
   ): Promise<{ message: MessageWithRelations; otherParticipantIds: string[] }> {
     const conversation = await this.getDetailOrThrow(userId, conversationId);
-    const message = await messageRepository.create(conversationId, userId, body);
+    const message = await messageRepository.create(
+      conversationId,
+      userId,
+      body,
+    );
+    if (conversation.isDraft) {
+      // First real message promotes the draft ("brouillon") conversation.
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { isDraft: false },
+      });
+    }
     const otherParticipantIds = conversation.participants
       .map((p) => p.userId)
       .filter((id) => id !== userId);
     return { message, otherParticipantIds };
   },
 
-  async markRead(userId: string, conversationId: string): Promise<{ lastReadAt: Date }> {
+  async markRead(
+    userId: string,
+    conversationId: string,
+  ): Promise<{ lastReadAt: Date }> {
     await this.getDetailOrThrow(userId, conversationId);
-    const lastReadAt = await conversationRepository.markRead(conversationId, userId);
+    const lastReadAt = await conversationRepository.markRead(
+      conversationId,
+      userId,
+    );
     return { lastReadAt };
   },
 
@@ -115,7 +219,13 @@ export const conversationService = {
       select: { conversationId: true, lastReadAt: true },
     });
     const counts = await Promise.all(
-      memberships.map((m) => conversationRepository.unreadCount(m.conversationId, userId, m.lastReadAt)),
+      memberships.map((m) =>
+        conversationRepository.unreadCount(
+          m.conversationId,
+          userId,
+          m.lastReadAt,
+        ),
+      ),
     );
     return counts.reduce((sum, count) => sum + count, 0);
   },
