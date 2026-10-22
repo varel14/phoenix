@@ -133,13 +133,14 @@ The API deploys to Google Cloud Run as the `phoenix-api` service — see
 [infra/gcp/README.md](infra/gcp/README.md). Short version, from the repo root:
 
 ```sh
-CORS_ORIGIN="https://your-web-app.example.com" \
-DATABASE_URL="postgresql://…" \
+DATABASE_URL="postgresql://…your-neon-host/neondb?sslmode=require" \
   ./infra/gcp/deploy.sh
 ```
 
 The script builds the image (Cloud Build + `apps/api/Dockerfile`), stores
 secrets in Secret Manager and wires `CORS_ORIGIN` through all three
-CORS-sensitive layers (Express `cors`, Socket.IO, better-auth) — the runbook
-explains what belongs in `CORS_ORIGIN` and how to verify it with curl.
+CORS-sensitive layers (Express `cors`, Socket.IO, better-auth). It scales to
+zero by default (`MIN_INSTANCES=0`). The runbook explains CORS, cost options,
+and how to point the mobile app at the deployed URL via
+`EXPO_PUBLIC_API_URL`.
 

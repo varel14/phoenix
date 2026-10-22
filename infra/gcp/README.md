@@ -5,8 +5,7 @@ running on **Cloud Run**. One command provisions everything that can be
 derived automatically:
 
 ```bash
-CORS_ORIGIN="https://your-web-app.example.com" \
-DATABASE_URL="postgresql://user:pass@host:5432/phoenix" \
+DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require" \
   ./infra/gcp/deploy.sh
 ```
 
@@ -17,10 +16,10 @@ the image with Cloud Build, deploys the service, and points
 
 Environment variables: `PROJECT`, `REGION` (default `europe-west1`),
 `SERVICE` (default `phoenix-api`), `IMAGE_TAG` (default `latest`),
-`MIN_INSTANCES`/`MAX_INSTANCES` (default `1`/`1`), `SKIP_BUILD=1` to redeploy
-the existing image without a rebuild. Optional app config (`R2_*`, `TURN_*`,
-`EXPO_PUSH_ACCESS_TOKEN`, `MAX_UPLOAD_MB`, `RING_TIMEOUT_MS`) is forwarded to
-the service when set.
+`MIN_INSTANCES`/`MAX_INSTANCES` (default `0`/`1` — scale-to-zero), `SKIP_BUILD=1`
+to redeploy the existing image without a rebuild. Optional app config (`R2_*`,
+`TURN_*`, `EXPO_PUSH_ACCESS_TOKEN`, `MAX_UPLOAD_MB`, `RING_TIMEOUT_MS`) is
+forwarded to the service when set.
 
 `infra/gcp/cloudbuild.yaml` is also usable standalone (e.g. from a git
 trigger); the Cloud Run deployment step lives in `deploy.sh` so it runs with
@@ -40,8 +39,10 @@ same `CORS_ORIGIN` env var (comma-separated, see
 
 ### Rules the deploy script enforces
 
-1. `CORS_ORIGIN` is **required** — the script refuses to deploy without it.
-   No silent wildcard in production.
+1. `CORS_ORIGIN` is **optional for a mobile-only deployment** — native apps
+   send no `Origin` header, so CORS never applies to them and an empty list
+   (every browser origin blocked) is the correct strict default. Set it as
+   soon as any web client needs access.
 2. `*` is **rejected** unless `ALLOW_WILDCARD_CORS=1`. The API answers with
    `Access-Control-Allow-Credentials: true`, and the `cors` middleware
    reflects the request origin when set to `*` — that combination lets any
@@ -90,8 +91,20 @@ CORS_ORIGIN="…" SKIP_BUILD=1 ./infra/gcp/deploy.sh
 
 - **Database**: `DATABASE_URL` must point at a Postgres reachable from Cloud
   Run — the docker-compose database is not. Easiest: a managed Postgres
-  (Neon, Supabase) or Cloud SQL. Cloud SQL private-IP variant additionally
-  needs a Serverless VPC connector on the service.
+  (Neon, Supabase) or Cloud SQL. For Cloud SQL, pass
+  `CLOUDSQL_INSTANCE=PROJECT:REGION:INSTANCE` to `deploy.sh`: it attaches the
+  instance to the service and grants `roles/cloudsql.client`, and you store
+  the unix-socket URL as the secret (keep the Cloud SQL **public IP disabled**
+  to avoid the ~$7/month IP charge):
+  `postgresql://USER:PASS@/phoenix?host=/cloudsql/PROJECT:REGION:INSTANCE`
+- **Using Neon** (true scale-to-zero, free tier): copy the **pooled**
+  connection string (host contains `-pooler`) from the Neon dashboard for the
+  `DATABASE_URL` secret. Run migrations against the **direct** (non-pooler)
+  host — `pnpm --filter api db:deploy` — since PgBouncer's transaction pooling
+  is unsuitable for them. Both strings already carry `?sslmode=require`,
+  which the pg driver in the API honors. Expect a short wake-up (~0.5 s) on
+  the first request after the ~5 min idle suspend; `curl $URL/health` should
+  report `database: up` once wired.
 - **Migrations**: the image ships `prisma/migrations`, but run
   `pnpm --filter api db:deploy` (from a machine/CI with dev dependencies)
   against the production `DATABASE_URL` before routing traffic to a fresh
@@ -122,6 +135,61 @@ CORS_ORIGIN="…" SKIP_BUILD=1 ./infra/gcp/deploy.sh
   then redeploy with `BETTER_AUTH_URL=https://<custom-domain>` so better-auth
   issues cookies/links against it, and include the new origin in
   `CORS_ORIGIN` if a browser talks to it.
+
+## Cost options
+
+First, the terminology trap: **Cloud SQL is not serverless.** It has no
+scale-to-zero mode — an instance bills 24/7 whether or not anything connects.
+The serverless part of this stack is already Cloud Run. What that means in
+practice (approximate, us/europe regions — check the
+[pricing calculator](https://cloud.google.com/products/calculator)):
+
+| Piece | Always-on cost | Can it go to zero? |
+|---|---|---|
+| Cloud Run, `MIN_INSTANCES=0` (**default**) | $0 when nobody is connected | Yes — cold start (seconds) on first connect |
+| Cloud Run, `MIN_INSTANCES=1` (opt-in) | ~$15–27/mo for the warm idle instance | No — that's what min-instances means |
+| Cloud SQL `db-f1-micro` + 10 GB SSD | ~$11–13/mo, always | No — always-on by design |
+| Cloud SQL public IP | ~$7/mo extra | Avoid: use the unix socket (above) |
+| Neon / Supabase free tier | $0 | Yes — true scale-to-zero Postgres |
+
+Two caveats when chasing the minimum:
+
+1. **Realtime keeps instances alive.** Socket.IO connections are billable
+   requests for their whole lifetime — once any user has the app open, an
+   instance runs (and bills) regardless of `MIN_INSTANCES`. Scale-to-zero
+   only saves money in periods where *nobody* is connected. It also means the
+   first user after an idle gap waits for a cold start (a few seconds with
+   this image, plus Neon's ~0.5 s wake if the DB suspended).
+2. **Downsizing further**: `CPU=0.25 MEMORY=512Mi ./infra/gcp/deploy.sh` —
+   the API only relays WebRTC signaling (media goes P2P/TURN), so a small CPU
+   is viable for light usage, but watch latency on calls.
+
+If $0 matters more than staying GCP-native, point `DATABASE_URL` at
+[Neon](https://neon.tech) or [Supabase](https://supabase.com) free tiers
+(true serverless Postgres that suspends when idle) and keep everything else
+as-is — the deploy script is database-agnostic. Watch their idle-suspend
+latency (~0.5–1 s wake) and free-tier limits before betting production on it.
+
+## Pointing the mobile app at the deployment
+
+The app reads its API base URL from `EXPO_PUBLIC_API_URL`
+(`apps/mobile/src/services/api/api-client.ts`), which Expo inlines into the
+JS bundle — so it is fixed at bundle time, per environment:
+
+```sh
+# apps/mobile/.env (gitignored, local overrides)
+EXPO_PUBLIC_API_URL=https://phoenix-api-xxxx-ew.a.run.app
+```
+
+- **Dev (metro / dev client)**: restart with `npx expo start -c` — the value
+  is only re-read on restart.
+- **EAS builds**: EAS picks up `apps/mobile/.env` at build time, or pass it
+  inline: `cd apps/mobile && EXPO_PUBLIC_API_URL=… eas build --profile <name>`.
+  Any installed binary keeps the URL it was built with — rebuild after
+  changing it.
+- Nothing else to configure for native clients: they send no `Origin` header
+  (CORS doesn't apply), and the deploy script already set `BETTER_AUTH_URL`
+  to the service URL for auth cookies and links.
 
 ## Environment on the service
 

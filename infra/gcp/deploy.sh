@@ -1,26 +1,34 @@
 #!/usr/bin/env bash
 # Deploys the Phoenix API to Google Cloud Run.
 #
-# Usage:
-#   CORS_ORIGIN=https://myapp.example.com DATABASE_URL=postgres://... \
+# Usage (mobile-only deploy, no CORS_ORIGIN needed):
+#   DATABASE_URL="postgresql://…neon.tech/neondb?sslmode=require" \
 #     ./infra/gcp/deploy.sh
 #
 # Required environment variables:
+#   DATABASE_URL   Postgres connection string (e.g. Neon's pooled URL). Stored
+#                  in Secret Manager on first deploy.
+#
+# Optional environment variables (see infra/gcp/README.md for details):
 #   CORS_ORIGIN    Comma-separated list of exact origins allowed to call the
 #                  API from a browser (e.g. "https://app.example.com").
+#                  Omit for a mobile-only deployment — native apps send no
+#                  Origin header, so all browser origins are then blocked.
 #                  "*" is rejected — with `credentials: true` it would let
 #                  every website make credentialed requests. Override with
 #                  ALLOW_WILDCARD_CORS=1 only for throwaway sandboxes.
-#   DATABASE_URL   Postgres connection string. Stored in Secret Manager on
-#                  first deploy; must be reachable from Cloud Run (Cloud SQL,
-#                  or any managed Postgres with public/authorized networking —
-#                  the docker-compose database is not reachable from GCP).
-#
-# Optional environment variables (see infra/gcp/README.md for details):
+#   PROJECT, REGION, SERVICE, REPOSITORY, IMAGE_TAG
 #   PROJECT, REGION, SERVICE, REPOSITORY, IMAGE_TAG
 #   BETTER_AUTH_URL     Custom base URL (e.g. https://api.example.com).
 #                       Defaults to the Cloud Run service URL.
-#   MIN_INSTANCES=1 MAX_INSTANCES=1 CPU=1 MEMORY=1Gi CONCURRENCY=80 TIMEOUT=3600
+#   CLOUDSQL_INSTANCE   Cloud SQL connection name (PROJECT:REGION:INSTANCE).
+#                       Attaches the instance to Cloud Run and grants the
+#                       runtime SA cloudsql.client — connect via the unix
+#                       socket: postgresql://user:pass@/phoenix?host=/cloudsql/PROJECT:REGION:INSTANCE
+#                       (keeps the Cloud SQL public IP disabled — no IP fee).
+#   MIN_INSTANCES=0 MAX_INSTANCES=1 CPU=1 MEMORY=1Gi CONCURRENCY=80 TIMEOUT=3600
+#                       Default 0 = scale-to-zero (idle cost $0, cold start on
+#                       first connect). MIN_INSTANCES=1 keeps one warm instance.
 #   SKIP_BUILD=1        Redeploy the existing image without rebuilding.
 #   ALLOW_WILDCARD_CORS=1
 #   R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET
@@ -34,7 +42,7 @@ REGION="${REGION:-europe-west1}"
 SERVICE="${SERVICE:-phoenix-api}"
 REPOSITORY="${REPOSITORY:-phoenix}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-MIN_INSTANCES="${MIN_INSTANCES:-1}"
+MIN_INSTANCES="${MIN_INSTANCES:-0}" # scale-to-zero by default: $0 idle, cold start on first connect
 MAX_INSTANCES="${MAX_INSTANCES:-1}"
 CPU="${CPU:-1}"
 MEMORY="${MEMORY:-1Gi}"
@@ -47,17 +55,22 @@ die() { printf '\033[1;31m[deploy] ERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 [ -n "$PROJECT" ] || die "No GCP project. Run 'gcloud config set project <id>' or pass PROJECT=<id>."
 command -v gcloud >/dev/null || die "gcloud CLI is required."
 [ -f infra/gcp/cloudbuild.yaml ] || die "Run this script from the repository root (it needs infra/gcp/cloudbuild.yaml)."
-[ -n "${CORS_ORIGIN:-}" ] || die "CORS_ORIGIN is required (comma-separated browser origins that may call the API)."
-
 # --- CORS validation --------------------------------------------------------
 # Single source of truth for all three CORS-sensitive layers in the API:
 # express `cors` middleware, Socket.IO handshake and better-auth trustedOrigins
 # all read env.CORS_ORIGIN (see apps/api/src/config/env.ts).
+# Optional: a mobile-only deployment needs no browser origins (native apps
+# send no Origin header, so CORS never applies to them) — omit the variable
+# and every browser origin is blocked. Set it as soon as a web client exists.
+if [ -z "${CORS_ORIGIN:-}" ]; then
+  log "CORS_ORIGIN unset — mobile-only deploy: all browser origins will be blocked."
+  log "Native mobile clients are unaffected. Set CORS_ORIGIN and redeploy when a web client needs access."
+  CORS_ORIGIN=""
+fi
 normalize_origins() {
   printf '%s' "$1" | tr ',' '\n' | sed 's#^[[:space:]]*##; s#[[:space:]]*$##; s#/*$##' | grep -v '^$' || true
 }
 ORIGINS="$(normalize_origins "$CORS_ORIGIN")"
-[ -n "$ORIGINS" ] || die "CORS_ORIGIN contains no usable origins."
 if printf '%s\n' "$ORIGINS" | grep -qx '\*'; then
   if [ "${ALLOW_WILDCARD_CORS:-0}" != "1" ]; then
     die "CORS_ORIGIN='*' is not allowed for a Cloud Run deployment.
@@ -124,6 +137,24 @@ for s in phoenix-api-database-url phoenix-api-better-auth-secret phoenix-api-pay
   grant_secret_access "$s"
 done
 
+# --- Optional Cloud SQL attachment -------------------------------------------
+EXTRA_DEPLOY_FLAGS=()
+if [ -n "${CLOUDSQL_INSTANCE:-}" ]; then
+  log "Attaching Cloud SQL instance $CLOUDSQL_INSTANCE…"
+  gcloud services enable sqladmin.googleapis.com --project "$PROJECT" >/dev/null
+  if ! gcloud projects get-iam-policy "$PROJECT" --format=json 2>/dev/null | \
+     grep -B3 "roles/cloudsql.client" | grep -q "serviceAccount:${RUNTIME_SA}"; then
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+      --member "serviceAccount:${RUNTIME_SA}" --role roles/cloudsql.client >/dev/null
+    log "Granted roles/cloudsql.client to the runtime service account."
+  fi
+  EXTRA_DEPLOY_FLAGS+=(--add-cloudsql-instances "$CLOUDSQL_INSTANCE")
+  if [ -n "${DATABASE_URL:-}" ] && ! printf '%s' "$DATABASE_URL" | grep -q "/cloudsql/"; then
+    log "NOTE: CLOUDSQL_INSTANCE is set but DATABASE_URL does not use the unix socket.
+  Expected shape: postgresql://USER:PASS@/phoenix?host=/cloudsql/${CLOUDSQL_INSTANCE}"
+  fi
+fi
+
 # --- Build -------------------------------------------------------------------
 if [ "${SKIP_BUILD:-0}" = "1" ]; then
   log "SKIP_BUILD=1 — deploying existing image $IMAGE"
@@ -178,7 +209,8 @@ gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
   --set-secrets "DATABASE_URL=phoenix-api-database-url:latest,BETTER_AUTH_SECRET=phoenix-api-better-auth-secret:latest,PAYMENT_WEBHOOK_SECRET=phoenix-api-payment-webhook-secret:latest" \
   --set-env-vars "$ENV_ARG" \
   --allow-unauthenticated \
-  --ingress all
+  --ingress all \
+  "${EXTRA_DEPLOY_FLAGS[@]}"
 
 # --- Post-deploy wiring & CORS audit ------------------------------------------
 URL="$(service_url)"
