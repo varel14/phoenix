@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   View,
@@ -282,83 +283,113 @@ export default function SendScreen() {
           <FadeIn>
             <SuccessHero
               title="Transfert réussi"
-              amountText={`−${formatMoney(transaction.amount, transaction.currency)}`}
+              subtitle={`Vous avez envoyé de l'argent à ${result.recipient.name}`}
+              amountText={formatMoney(transaction.amount, transaction.currency)}
               amountColor={colors.text}
-              message="Pour plus de détails, consultez votre historique de transactions."
+              statusPill="Opération effectuée"
             />
           </FadeIn>
 
-          {/* Transaction receipt — reference header, peers, then the amounts */}
+          {/* Receipt card — Destinataire / Date / Heure / Référence / Montants */}
           <FadeIn delay={80}>
             <View
               style={{
                 backgroundColor: colors.surface,
                 borderRadius: radii.xl,
                 padding: spacing.xl,
-                gap: spacing.lg,
+                gap: spacing.md,
               }}
             >
-              <SummaryRow label="Transaction" value={transaction.reference} />
+              <SummaryRow label="Destinataire" value={result.recipient.name} />
+              <SummaryRow
+                label="Date"
+                value={new Date(transaction.createdAt).toLocaleDateString(
+                  "fr-FR",
+                  {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  },
+                )}
+              />
+              <SummaryRow
+                label="Heure"
+                value={new Date(transaction.createdAt).toLocaleTimeString(
+                  "fr-FR",
+                )}
+              />
+              <SummaryRow label="Référence" value={transaction.reference} />
+              <SummaryRow
+                label="Montant envoyé"
+                value={formatMoney(transaction.amount, transaction.currency)}
+              />
+              <SummaryRow
+                label="Frais de transfert"
+                value={formatMoney(0, transaction.currency)}
+              />
+              <SummaryRow
+                label="Total débité"
+                value={formatMoney(transaction.amount, transaction.currency)}
+                valueColor={colors.primary}
+              />
+              <SummaryRow
+                label="Nouveau solde"
+                value={formatMoney(walletBalance, transaction.currency)}
+              />
+              {transaction.note ? (
+                <SummaryRow label="Note" value={transaction.note} />
+              ) : null}
               <View
                 style={{
                   height: StyleSheet.hairlineWidth,
                   backgroundColor: colors.hairline,
+                  borderStyle: "dashed",
                 }}
               />
-              <PeerFlow
-                from={{
-                  id: sessionUser?.id ?? "me",
-                  name: sessionUser?.name ?? "Moi",
-                  image: sessionUser?.image ?? null,
-                }}
-                to={result.recipient}
-              />
-              <View
-                style={{
-                  height: StyleSheet.hairlineWidth,
-                  backgroundColor: colors.hairline,
-                }}
-              />
-              <View style={{ gap: spacing.md }}>
-                <SummaryRow
-                  label="Date"
-                  value={formatDateTime(transaction.createdAt)}
-                />
-                <SummaryRow
-                  label="Montant"
-                  value={formatMoney(transaction.amount, transaction.currency)}
-                />
-                {transaction.note ? (
-                  <SummaryRow label="Note" value={transaction.note} />
-                ) : null}
-                <SummaryRow
-                  label="Montant total"
-                  value={formatMoney(transaction.amount, transaction.currency)}
-                  valueColor={colors.text}
-                />
-                <SummaryRow
-                  label="Nouveau solde"
-                  value={formatMoney(walletBalance, transaction.currency)}
-                />
-              </View>
+              <AppText
+                variant="caption"
+                color={colors.textFaint}
+                align="center"
+              >
+                Conservez ce reçu comme preuve de paiement. Une confirmation a
+                été envoyée au destinataire.
+              </AppText>
             </View>
           </FadeIn>
-        </ScrollView>
 
-        {/* Mockup: the action pins to the bottom of the screen */}
-        <View
-          style={{
-            paddingHorizontal: spacing.lg,
-            paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
-          }}
-        >
-          <FadeIn delay={140}>
-            <Button
-              label="Retour au portefeuille"
-              onPress={() => router.replace("/pay")}
-            />
-          </FadeIn>
-        </View>
+          {/* Mockup: share receipt + home, pinned to the bottom */}
+          <View
+            style={{
+              gap: spacing.md,
+              paddingBottom: 8,
+            }}
+          >
+            <FadeIn delay={120}>
+              <Button
+                label="Partager le reçu"
+                icon="share-social-outline"
+                onPress={() =>
+                  void Share.share({
+                    message: [
+                      "Reçu Chuyassi Pay — Transfert réussi",
+                      `Destinataire : ${result.recipient.name}`,
+                      `Montant : ${formatMoney(transaction.amount, transaction.currency)}`,
+                      `Référence : ${transaction.reference}`,
+                      `Date : ${formatDateTime(transaction.createdAt)}`,
+                    ].join("\n"),
+                  })
+                }
+              />
+            </FadeIn>
+            <FadeIn delay={160}>
+              <Button
+                label="Retour à l'accueil"
+                variant="secondary"
+                onPress={() => router.replace("/pay")}
+              />
+            </FadeIn>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -593,23 +624,29 @@ export default function SendScreen() {
           paddingBottom: 24,
         }}
       >
-        {/* Sender → recipient, mockup style */}
+        {/* Recipient card */}
         <FadeIn>
-          <View style={{ gap: spacing.xs, alignItems: "center" }}>
-            <PeerFlow
-              from={{
-                id: sessionUser?.id ?? "me",
-                name: sessionUser?.name ?? "Moi",
-                image: sessionUser?.image ?? null,
-              }}
-              to={
-                recipient ?? {
-                  id: "",
-                  name: "Destinataire",
-                  image: null,
-                }
-              }
-            />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              padding: spacing.md,
+              backgroundColor: colors.surface,
+              borderRadius: radii.xl,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            {recipient ? <UserAvatar user={recipient} size={44} /> : null}
+            <View style={{ flex: 1 }}>
+              <AppText variant="subheading" numberOfLines={1}>
+                {recipient?.name}
+              </AppText>
+              <AppText variant="small" color={colors.textFaint}>
+                Destinataire
+              </AppText>
+            </View>
             {!linkedRecipient ? (
               <Pressable
                 accessibilityRole="button"
@@ -621,7 +658,7 @@ export default function SendScreen() {
                   color={colors.accent}
                   style={{ fontWeight: "700" }}
                 >
-                  Modifier le destinataire
+                  Modifier
                 </AppText>
               </Pressable>
             ) : null}
@@ -684,7 +721,7 @@ export default function SendScreen() {
               {QUICK_AMOUNTS.map((preset) => (
                 <Chip
                   key={preset}
-                  label={formatAmount(preset)}
+                  label={`${formatAmount(preset)} FCFA`}
                   active={amount === preset}
                   onPress={() => setAmountInput(formatAmount(preset))}
                 />

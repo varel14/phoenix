@@ -300,15 +300,20 @@ export function QuickRecipient({
 /** Springy result banner: check disc, overline title, amount, message. */
 export function SuccessHero({
   title,
+  subtitle,
   amountText,
   amountColor,
   message,
+  statusPill,
   tone = "success",
 }: {
   title: string;
+  subtitle?: string;
   amountText: string;
   amountColor: string;
   message?: string;
+  /** Green "Opération effectuée"-style pill under the amount. */
+  statusPill?: string;
   tone?: "success" | "danger";
 }) {
   const { colors } = useTheme();
@@ -335,57 +340,101 @@ export function SuccessHero({
   return (
     <View style={{ alignItems: "center", gap: spacing.md }}>
       <Animated.View style={{ transform: [{ scale }] }}>
-        {tone === "success" ? (
-          <LinearGradient
-            colors={themeGradients.brand}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              circle(84),
-              {
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: `0 10px 28px ${withAlpha(themeGradients.brand[1], 0.4)}`,
-              },
-            ]}
-          >
-            <Ionicons name="checkmark" size={40} color="#FFFFFF" />
-          </LinearGradient>
-        ) : (
-          <View
-            style={[
-              circle(84),
-              {
-                backgroundColor: disc,
-                boxShadow: `0 10px 28px ${withAlpha(disc, 0.35)}`,
-              },
-            ]}
-          >
-            <Ionicons name="close" size={40} color="#FFFFFF" />
-          </View>
-        )}
+        <View
+          style={[
+            circle(96),
+            {
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 6,
+              borderColor:
+                tone === "success"
+                  ? withAlpha(themeGradients.brand[0], 0.28)
+                  : withAlpha(disc, 0.25),
+            },
+          ]}
+        >
+          {tone === "success" ? (
+            <LinearGradient
+              colors={themeGradients.brand}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[
+                circle(72),
+                { alignItems: "center", justifyContent: "center" },
+              ]}
+            >
+              <Ionicons name="checkmark" size={36} color="#FFFFFF" />
+            </LinearGradient>
+          ) : (
+            <View
+              style={[
+                circle(72),
+                {
+                  backgroundColor: disc,
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+              ]}
+            >
+              <Ionicons name="close" size={36} color="#FFFFFF" />
+            </View>
+          )}
+        </View>
       </Animated.View>
       <Animated.View
         style={{ opacity: fade, alignItems: "center", gap: spacing.xs }}
       >
-        <AppText
-          variant="small"
-          color={colors.textFaint}
-          style={{ letterSpacing: 1.5 }}
-        >
-          {title.toUpperCase()}
-        </AppText>
+        <AppText variant="heading">{title}</AppText>
+        {subtitle ? (
+          <AppText variant="bodyMuted" align="center">
+            {subtitle}
+          </AppText>
+        ) : null}
         <AppText
           style={{
-            fontSize: 34,
+            fontSize: 36,
             fontWeight: "800",
             letterSpacing: -0.5,
             color: amountColor,
             fontVariant: ["tabular-nums"],
+            marginTop: spacing.xs,
           }}
         >
           {amountText}
         </AppText>
+        {statusPill ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: withAlpha(colors.success, 0.15),
+              borderRadius: radii.full,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 5,
+              marginTop: spacing.xs,
+            }}
+          >
+            <View
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: colors.success,
+              }}
+            />
+            <AppText
+              style={{
+                fontSize: 12,
+                fontWeight: "700",
+                color: colors.success,
+              }}
+            >
+              {statusPill}
+            </AppText>
+          </View>
+        ) : null}
         {message ? (
           <AppText variant="bodyMuted" align="center">
             {message}
@@ -486,6 +535,9 @@ export function AmountKeyboard({
         flexBasis: "30%",
         height: 64,
         borderRadius: radii.lg,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
         alignItems: "center",
         justifyContent: "center",
       }}
