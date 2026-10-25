@@ -2,8 +2,13 @@
 #
 # Run directly:
 #   gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-#     --project <PROJECT> --substitutions _REGION=europe-west1,_IMAGE=<REGION>-docker.pkg.dev/<PROJECT>/phoenix/api:latest
+#     --project <PROJECT> \
+#     --substitutions _REGION=europe-west1,_REPOSITORY=phoenix,_IMAGE_TAG=latest
 # or through infra/gcp/deploy.sh, which also performs the Cloud Run deploy.
+#
+# NOTE: $SHORT_SHA is only populated for trigger-based builds — manual
+# `gcloud builds submit` leaves it empty, which the API rejects as an
+# invalid image reference ("api:"). Tag with _IMAGE_TAG only.
 #
 # The Cloud Run deployment (env vars, secrets, CORS origin) lives in
 # deploy.sh so it runs with operator credentials instead of the Cloud Build
@@ -22,8 +27,6 @@ steps:
       - apps/api/Dockerfile
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
-      - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$SHORT_SHA
       - .
 
 timeout: 1800s
@@ -35,4 +38,3 @@ options:
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:$SHORT_SHA
