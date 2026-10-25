@@ -5,6 +5,8 @@
 
 # --- deps: full workspace install with the frozen lockfile ----------------
 FROM node:24-slim AS deps
+RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@11.25.0
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -21,7 +23,11 @@ RUN pnpm install --frozen-lockfile
 # --- build: prisma generate + tsc (generated client compiles into dist/) --
 FROM deps AS build
 COPY apps/api apps/api
-RUN pnpm --filter api db:generate && \
+# prisma.config.ts resolves DATABASE_URL at load time even for `generate`
+# (no connection is made), and apps/api/.env is deliberately excluded from
+# the image — so feed the config a placeholder.
+RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" \
+    pnpm --filter api db:generate && \
     pnpm --filter api build
 
 # --- prod-deps: fresh api-only production install ---------------------------
@@ -30,6 +36,8 @@ RUN pnpm --filter api db:generate && \
 # keep the standard workspace layout: node_modules symlinks are relative and
 # resolve unchanged in the runtime stage.
 FROM node:24-slim AS prod-deps
+RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@11.25.0
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
