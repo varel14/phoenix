@@ -9,10 +9,11 @@
  * readable on near-black; the brand core #5B23FF sits in `primaryDeep` and in
  * the light-mode brand gradient. In light mode `primary` is the brand core.
  *
- * Dark palette (2026 refresh): neutral violet-tinted grays lifted from the
- * "midnight" scale — background #0A0A10, surface #15141A, raised #1B1B21 —
- * with primary #7E5FFF and a near-black on-primary foreground. The previous
- * palette remains in use for light mode only.
+ * Dark palette (2026 refresh): neutral true-black scale — background #0A0A0C,
+ * surface #141417, raised #1A1A1E, hairline borders — with violet reserved
+ * for the primary and tinted chips, never the base surfaces (reference:
+ * pro dashboard dark UIs). The previous palette remains in use for light
+ * mode only.
  */
 
 export interface Palette {
@@ -53,23 +54,25 @@ export interface Palette {
 }
 
 export const darkColors: Palette = {
-  background: "#0A0A10",
-  backgroundSubtle: "#111016",
-  surface: "#15141A",
-  surfaceElevated: "#1B1B21",
-  surfaceMuted: "#0F0F14",
-  surfaceHighlight: "#26252C",
-  border: "#2E2E34",
-  hairline: "rgba(236, 236, 246, 0.08)",
+  // Neutral true-black scale (reference: product dashboards) — color lives in
+  // the violet primary and tinted chips, never in the base surfaces.
+  background: "#0A0A0C",
+  backgroundSubtle: "#101013",
+  surface: "#141417",
+  surfaceElevated: "#1A1A1E",
+  surfaceMuted: "#0E0E10",
+  surfaceHighlight: "#222227",
+  border: "#26262B",
+  hairline: "rgba(240, 240, 245, 0.08)",
 
-  text: "#ECECF6",
-  textMuted: "#A4A4AC",
-  textFaint: "#74747B",
+  text: "#F2F2F5",
+  textMuted: "#A0A0A8",
+  textFaint: "#6C6C74",
 
   primary: "#7E5FFF",
   primaryDeep: "#7655F4",
   onPrimary: "#0E0D15",
-  primaryTint: "rgba(126, 95, 255, 0.16)",
+  primaryTint: "rgba(126, 95, 255, 0.14)",
 
   accent: "#7E5FFF",
   gold: "#F0BB3B",
@@ -78,8 +81,8 @@ export const darkColors: Palette = {
   warning: "#F0BB3B",
 
   favorite: "#FF4D6D",
-  playerBar: "rgba(21, 20, 26, 0.92)",
-  scrim: "rgba(10, 10, 16, 0.66)",
+  playerBar: "rgba(18, 18, 22, 0.92)",
+  scrim: "rgba(8, 8, 10, 0.66)",
   onGradientMuted: "rgba(255, 255, 255, 0.85)",
 };
 
@@ -130,7 +133,7 @@ export const lightGradients = {
 
 export const darkGradients = {
   brand: ["#8B78FF", "#7655F4"] as const,
-  brandDeep: ["#231255", "#0A0A10"] as const,
+  brandDeep: ["#22114F", "#0A0A0C"] as const,
   premium: ["#FFC24B", "#FF8A3D"] as const,
 };
 
@@ -168,9 +171,9 @@ export function pickAmbient(seed: string): AmbientKey {
 /** Layered, scheme-aware depth presets (RN new-arch `boxShadow`). */
 const shadowSets = {
   dark: {
-    card: "0 1px 2px rgba(5, 4, 12, 0.34), 0 10px 30px rgba(5, 4, 12, 0.34)",
-    float: "0 16px 44px rgba(5, 4, 12, 0.58)",
-    bubble: "0 2px 10px rgba(5, 4, 12, 0.28)",
+    card: "0 1px 2px rgba(0, 0, 0, 0.36), 0 10px 30px rgba(0, 0, 0, 0.36)",
+    float: "0 16px 44px rgba(0, 0, 0, 0.6)",
+    bubble: "0 2px 10px rgba(0, 0, 0, 0.3)",
   },
   light: {
     card: "0 1px 2px rgba(28, 20, 64, 0.05), 0 10px 30px rgba(28, 20, 64, 0.07)",
