@@ -72,6 +72,39 @@ export const walletRepository = {
    * People worth suggesting as transfer recipients: chat contacts (direct
    * conversation partners) merged with recent transfer counterparties.
    */
+  /** Distinct recent transfer counterparties as wallet recipients. */
+  async recentCounterparties(
+    userId: string,
+    take = 20,
+  ): Promise<Array<{ id: string; name: string; image: string | null }>> {
+    const rows = await prisma.walletTransaction.findMany({
+      where: {
+        wallet: { userId },
+        type: "TRANSFER_OUT",
+        counterpartyId: { not: null },
+      },
+      select: { counterpartyId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const ids: string[] = [];
+    for (const row of rows) {
+      const id = row.counterpartyId!;
+      if (!ids.includes(id)) ids.push(id);
+      if (ids.length >= take) break;
+    }
+    if (ids.length === 0) return [];
+    const users = await prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, image: true },
+    });
+    return ids
+      .map((id) => users.find((user) => user.id === id))
+      .filter(
+        (user): user is { id: string; name: string; image: string | null } =>
+          Boolean(user),
+      );
+  },
+
   async findContactIds(userId: string): Promise<string[]> {
     const memberships = await prisma.conversationParticipant.findMany({
       where: {
@@ -120,5 +153,61 @@ export const walletRepository = {
         AND (SIMILARITY("name", ${search}) > 0.1 OR "name" ILIKE ${`%${search}%`})
       ORDER BY SIMILARITY("name", ${search}) DESC, "name" ASC
       LIMIT 20`;
+  },
+
+  // ------------------------------------------------------- payment methods
+  async listPaymentMethods(userId: string) {
+    return prisma.paymentMethod.findMany({
+      where: { userId },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+    });
+  },
+
+  /**
+   * The receive path: a phone number someone wires money to resolves to the
+   * platform user who registered it — the number acts as a wallet address.
+   */
+  async findPaymentMethodOwner(phoneNumber: string) {
+    return prisma.paymentMethod.findFirst({
+      where: { phoneNumber },
+      select: { userId: true },
+    });
+  },
+
+  async createPaymentMethod(
+    userId: string,
+    data: {
+      provider: "ORANGE_MONEY" | "MTN_MONEY";
+      phoneNumber: string;
+      isDefault: boolean;
+    },
+  ) {
+    return prisma.paymentMethod.create({ data: { userId, ...data } });
+  },
+
+  async countPaymentMethods(userId: string) {
+    return prisma.paymentMethod.count({ where: { userId } });
+  },
+
+  async clearDefaultPaymentMethods(userId: string) {
+    await prisma.paymentMethod.updateMany({
+      where: { userId, isDefault: true },
+      data: { isDefault: false },
+    });
+  },
+
+  async deletePaymentMethod(userId: string, id: string) {
+    const result = await prisma.paymentMethod.deleteMany({
+      where: { id, userId },
+    });
+    return result.count;
+  },
+
+  async setDefaultPaymentMethod(userId: string, id: string) {
+    const updated = await prisma.paymentMethod.updateMany({
+      where: { id, userId },
+      data: { isDefault: true },
+    });
+    return updated.count;
   },
 };

@@ -42,6 +42,12 @@
       "expo-secure-store",
       "expo-notifications",
       [
+        "expo-contacts",
+        {
+          "contactsPermission": "Autoriser l'accès aux contacts pour retrouver vos proches sur Chuyassi."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",

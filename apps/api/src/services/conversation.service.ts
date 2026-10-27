@@ -1,6 +1,4 @@
 import { prisma } from "../config/prisma.js";
-import { userFollowRepository } from "../repositories/follow.repository.js";
-import { areMutualFollows, FOLLOW_REQUIRED_CODE } from "./user.service.js";
 import { AppError } from "../lib/errors.js";
 import { buildPagination, type PaginationMeta } from "../lib/responses.js";
 import type {
@@ -57,28 +55,58 @@ export const conversationService = {
     };
   },
 
-  /** Typo-tolerant user search (pg_trgm), with the follow state per contact. */
+  /** Typo-tolerant user search (name or phone), excluding the requester. */
   async searchUsers(userId: string, search: string) {
     const users = await conversationRepository.searchUsers(userId, search);
-    const ids = users.map((user) => user.id);
-    const [outgoing, followers, pendingIncoming] = await Promise.all([
-      userFollowRepository.findEdgesFrom(userId, ids),
-      userFollowRepository.findFollowerIds(userId, ids),
-      userFollowRepository.findPendingIncomingIds(userId, ids),
-    ]);
-    return users.map((user) => {
-      const status = outgoing.get(user.id);
-      const followsMe = followers.has(user.id);
-      const follow: "none" | "pending" | "accepted" | "mutual" =
-        status === "ACCEPTED" && followsMe
-          ? "mutual"
-          : status === "ACCEPTED"
-            ? "accepted"
-            : status === "PENDING" || pendingIncoming.has(user.id)
-              ? "pending"
-              : "none";
-      return { ...user, follow };
+    return users.map(({ phone, ...user }) => ({ ...user, phone }));
+  },
+
+  /**
+   * WhatsApp-style contact matching: app users whose phone number ends with
+   * the same digits as any device contact. Matching happens on the last 8
+   * digits so international prefixes and spacing do not matter.
+   */
+  async matchContacts(userId: string, phones: string[]) {
+    const digits = (value: string) => value.replace(/\D/g, "");
+    const suffixes = [
+      ...new Set(
+        phones
+          .map(digits)
+          .filter((d) => d.length >= 6)
+          .map((d) => d.slice(-8)),
+      ),
+    ];
+    if (suffixes.length === 0) return [];
+    const candidates = await prisma.user.findMany({
+      where: { id: { not: userId }, phone: { not: null } },
+      select: { id: true, name: true, image: true, phone: true },
     });
+    return candidates
+      .filter((user) => {
+        const userDigits = digits(user.phone ?? "");
+        return suffixes.some((suffix) => userDigits.endsWith(suffix));
+      })
+      .map(({ phone, ...user }) => ({ ...user, phone }));
+  },
+
+  /** Accepts a message request: the conversation becomes a normal thread. */
+  async acceptRequest(userId: string, conversationId: string) {
+    await this.getDetailOrThrow(userId, conversationId);
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId, userId, acceptedAt: null },
+      data: { acceptedAt: new Date() },
+    });
+    return { accepted: true };
+  },
+
+  /** Hides a conversation row (X button). A new incoming message re-shows it. */
+  async hideConversation(userId: string, conversationId: string) {
+    await this.getDetailOrThrow(userId, conversationId);
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId, userId },
+      data: { hiddenAt: new Date() },
+    });
+    return { hidden: true };
   },
 
   /** Typo-tolerant message search inside one conversation (pg_trgm). */
@@ -101,15 +129,6 @@ export const conversationService = {
       select: { id: true },
     });
     if (!recipient) throw AppError.notFound("User");
-
-    // Chatting requires a mutual ACCEPTED follow with the recipient.
-    if (!(await areMutualFollows(userId, body.recipientId))) {
-      throw new AppError(
-        403,
-        FOLLOW_REQUIRED_CODE,
-        "Vous pourrez discuter ensemble une fois la demande de suivi acceptée",
-      );
-    }
 
     const existing = await conversationRepository.findDirectConversation(
       userId,
@@ -195,6 +214,25 @@ export const conversationService = {
         data: { isDraft: false },
       });
     }
+    // Sending engages the sender (accepts a pending request) and re-shows
+    // the thread for anyone who dismissed it — WhatsApp behavior.
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId, userId },
+      data: {
+        acceptedAt:
+          conversation.participants.find((p) => p.userId === userId)
+            ?.acceptedAt ?? new Date(),
+        hiddenAt: null,
+      },
+    });
+    await prisma.conversationParticipant.updateMany({
+      where: {
+        conversationId,
+        userId: { not: userId },
+        hiddenAt: { not: null },
+      },
+      data: { hiddenAt: null },
+    });
     const otherParticipantIds = conversation.participants
       .map((p) => p.userId)
       .filter((id) => id !== userId);

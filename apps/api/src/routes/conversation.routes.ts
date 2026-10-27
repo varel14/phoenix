@@ -5,6 +5,7 @@ import { validate } from "../middleware/validate.js";
 import { idParamsSchema } from "../validators/common.js";
 import {
   createConversationBodySchema,
+  matchContactsBodySchema,
   listConversationsQuerySchema,
   listMessagesQuerySchema,
   searchMessagesQuerySchema,
@@ -31,6 +32,21 @@ conversationRouter.post(
   "/",
   validate({ body: createConversationBodySchema }),
   conversationController.create,
+);
+conversationRouter.post(
+  "/match-contacts",
+  validate({ body: matchContactsBodySchema }),
+  conversationController.matchContacts,
+);
+conversationRouter.post(
+  "/:id/accept",
+  validate({ params: idParamsSchema }),
+  conversationController.acceptRequest,
+);
+conversationRouter.post(
+  "/:id/hide",
+  validate({ params: idParamsSchema }),
+  conversationController.hideConversation,
 );
 conversationRouter.get(
   "/:id",

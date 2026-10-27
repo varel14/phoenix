@@ -34,7 +34,7 @@ export const conversationRepository = {
     options: { page: number; limit: number; search?: string | undefined },
   ): Promise<ConversationWithParticipants[]> {
     const baseWhere: Prisma.ConversationWhereInput = {
-      participants: { some: { userId } },
+      participants: { some: { userId, hiddenAt: null } },
     };
     const term = options.search?.trim() ?? "";
     if (term.length < 3) {
@@ -148,7 +148,14 @@ export const conversationRepository = {
     userId: string,
     search: string,
     limit = 20,
-  ): Promise<Array<{ id: string; name: string; image: string | null }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      image: string | null;
+      phone: string | null;
+    }>
+  > {
     const term = search.trim();
     if (term.length < 3) {
       // Empty search returns the default contact list (newest members).
@@ -156,10 +163,15 @@ export const conversationRepository = {
         where: {
           id: { not: userId },
           ...(term.length > 0
-            ? { name: { startsWith: term, mode: "insensitive" } }
+            ? {
+                OR: [
+                  { name: { startsWith: term, mode: "insensitive" } },
+                  { phone: { contains: term } },
+                ],
+              }
             : {}),
         },
-        select: { id: true, name: true, image: true },
+        select: { id: true, name: true, image: true, phone: true },
         take: limit,
         orderBy: { createdAt: "desc" },
       });
@@ -173,13 +185,19 @@ export const conversationRepository = {
     if (rows.length === 0) return [];
     const users = await prisma.user.findMany({
       where: { id: { in: rows.map((row) => row.id) } },
-      select: { id: true, name: true, image: true },
+      select: { id: true, name: true, image: true, phone: true },
     });
     return rows
       .map((row) => users.find((user) => user.id === row.id))
       .filter(
-        (user): user is { id: string; name: string; image: string | null } =>
-          Boolean(user),
+        (
+          user,
+        ): user is {
+          id: string;
+          name: string;
+          image: string | null;
+          phone: string | null;
+        } => Boolean(user),
       );
   },
 
@@ -228,7 +246,15 @@ export const conversationRepository = {
           type: "DIRECT",
           isDraft: options?.isDraft ?? false,
           participants: {
-            create: [{ userId: userAId }, { userId: userBId }],
+            create: [
+              // The initiator has engaged; the recipient gets a message
+              // request (acceptedAt stays null) when a message is included.
+              { userId: userAId, acceptedAt: new Date() },
+              {
+                userId: userBId,
+                acceptedAt: options?.firstMessage ? null : new Date(),
+              },
+            ],
           },
         },
         include: conversationParticipantInclude,

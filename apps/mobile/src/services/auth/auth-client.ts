@@ -39,6 +39,17 @@ export const authClient = createAuthClient({
   fetchOptions: {
     customFetchImpl: nativeFetch,
   },
+  // Mirrors the server's user.additionalFields so the inferred signup body
+  // accepts the phone number (WhatsApp-style chat identity).
+  user: {
+    additionalFields: {
+      phone: {
+        type: "string" as const,
+        required: false,
+        input: true,
+      },
+    },
+  },
 });
 
 export const { signIn, signUp, signOut, useSession, getSession } = authClient;

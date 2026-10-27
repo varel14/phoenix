@@ -2,28 +2,24 @@ import { prisma } from "../config/prisma.js";
 import { AppError } from "../lib/errors.js";
 import { WALLET_REFERENCE_PREFIX, generateReference } from "../lib/refs.js";
 import {
-  userFollowRepository,
-  type UserFollowRef,
-} from "../repositories/follow.repository.js";
-import {
   walletRepository,
   type WalletTransactionWithCounterparty,
 } from "../repositories/wallet.repository.js";
-import { getFollowState, type UserFollowState } from "./user.service.js";
 import type {
+  CreatePaymentMethodBody,
   InitiateTopupBody,
   ListWalletTransactionsQuery,
+  MobileMoneyProvider,
+  PhoneTransferBody,
   TransferBody,
 } from "../validators/wallet.schema.js";
-import type { Prisma, Wallet } from "../generated/prisma/client.js";
+import type {
+  PaymentMethod,
+  Prisma,
+  Wallet,
+} from "../generated/prisma/client.js";
 
 const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED"]);
-
-/** Recipient with follow context — mutual follows are the payment inner circle. */
-export type WalletRecipientWithFollow = UserFollowRef & {
-  isFollowing: boolean;
-  isMutual: boolean;
-};
 
 export type WalletLedgerResult = {
   transaction: WalletTransactionWithCounterparty;
@@ -126,6 +122,162 @@ export const walletService = {
     return this.confirmTopup(reference);
   },
 
+  // -------------------------------------------------- phone (mobile money)
+  /** Strips separators; keeps a leading + for international numbers. */
+  normalizePhoneNumber(raw: string): string {
+    return raw.replace(/[\s.-]/g, "");
+  },
+
+  /**
+   * Wires money to a real-world Orange Money / MTN number. When the number
+   * belongs to a registered platform user (their wallet address), the money
+   * lands in their wallet instantly as a paired internal transfer. Otherwise
+   * a PENDING external wire is created for the provider to settle.
+   */
+  async initiatePhoneTransfer(
+    userId: string,
+    body: PhoneTransferBody,
+  ): Promise<WalletTransactionWithCounterparty> {
+    const phoneNumber = this.normalizePhoneNumber(body.phoneNumber);
+
+    // Registered number → instant internal transfer to that wallet address.
+    const owner = await walletRepository.findPaymentMethodOwner(phoneNumber);
+    if (owner && owner.userId !== userId) {
+      const result = await this.transfer(userId, {
+        recipientId: owner.userId,
+        amount: body.amount,
+        ...(body.note ? { note: body.note } : {}),
+        via: { provider: body.provider, phoneNumber },
+      });
+      return result.transaction;
+    }
+
+    const wallet = await this.ensureWallet(userId);
+    if (wallet.balance < body.amount) {
+      throw AppError.unprocessable("Insufficient wallet balance");
+    }
+    return prisma.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: "PHONE_TRANSFER",
+        status: "PENDING",
+        amount: body.amount,
+        currency: wallet.currency,
+        reference: generateReference(WALLET_REFERENCE_PREFIX),
+        note: body.note ?? null,
+        phoneNumber,
+        provider: body.provider,
+      },
+      include: {
+        counterparty: { select: { id: true, name: true, image: true } },
+      },
+    });
+  },
+
+  // ------------------------------------------------------ payment methods
+  /** The user's registered mobile money numbers — their wallet addresses. */
+  async listPaymentMethods(userId: string) {
+    return walletRepository.listPaymentMethods(userId);
+  },
+
+  async createPaymentMethod(
+    userId: string,
+    body: CreatePaymentMethodBody,
+  ): Promise<PaymentMethod> {
+    const phoneNumber = this.normalizePhoneNumber(body.phoneNumber);
+    // A number is a wallet address: it belongs to exactly one account.
+    const taken = await walletRepository.findPaymentMethodOwner(phoneNumber);
+    if (taken) {
+      throw AppError.conflict(
+        "Ce numéro est déjà associé à un compte Chuyassi Pay",
+      );
+    }
+    const duplicate = await prisma.paymentMethod.findFirst({
+      where: { userId, provider: body.provider, phoneNumber },
+    });
+    if (duplicate) {
+      throw AppError.conflict("Ce numéro est déjà enregistré");
+    }
+
+    const isFirst = (await walletRepository.countPaymentMethods(userId)) === 0;
+    const isDefault = body.isDefault ?? isFirst;
+    if (isDefault) await walletRepository.clearDefaultPaymentMethods(userId);
+    return walletRepository.createPaymentMethod(userId, {
+      provider: body.provider,
+      phoneNumber,
+      isDefault,
+    });
+  },
+
+  async deletePaymentMethod(userId: string, id: string): Promise<void> {
+    const removed = await walletRepository.deletePaymentMethod(userId, id);
+    if (removed === 0) throw AppError.notFound("Payment method");
+  },
+
+  async setDefaultPaymentMethod(userId: string, id: string): Promise<void> {
+    await walletRepository.clearDefaultPaymentMethods(userId);
+    const updated = await walletRepository.setDefaultPaymentMethod(userId, id);
+    if (updated === 0) throw AppError.notFound("Payment method");
+  },
+
+  /**
+   * Completes a pending phone transfer: atomically debits the wallet and
+   * marks the entry SUCCESS — the entry point a mobile-money webhook would
+   * call in production. Idempotent for already-confirmed transfers.
+   */
+  async confirmPhoneTransfer(reference: string): Promise<WalletLedgerResult> {
+    return prisma.$transaction(async (tx) => {
+      const entry = await tx.walletTransaction.findUnique({
+        where: { reference },
+        include: {
+          counterparty: { select: { id: true, name: true, image: true } },
+        },
+      });
+      if (!entry) throw AppError.notFound("Wallet transaction");
+      if (TERMINAL_STATUSES.has(entry.status)) {
+        const wallet = await tx.wallet.findUniqueOrThrow({
+          where: { id: entry.walletId },
+        });
+        return { transaction: entry, wallet, duplicate: true };
+      }
+
+      // Conditional decrement: fails when the balance moved below the amount.
+      const debited = await tx.wallet.updateMany({
+        where: { id: entry.walletId, balance: { gte: entry.amount } },
+        data: { balance: { decrement: entry.amount } },
+      });
+      if (debited.count === 0) {
+        throw AppError.unprocessable("Insufficient wallet balance");
+      }
+      const wallet = await tx.wallet.findUniqueOrThrow({
+        where: { id: entry.walletId },
+      });
+      const transaction = await tx.walletTransaction.update({
+        where: { id: entry.id },
+        data: { status: "SUCCESS", balanceAfter: wallet.balance },
+        include: {
+          counterparty: { select: { id: true, name: true, image: true } },
+        },
+      });
+      return { transaction, wallet, duplicate: false };
+    });
+  },
+
+  /** Dev-only shortcut: pushes a SUCCESS confirmation like a provider webhook. */
+  async devConfirmPhoneTransfer(
+    userId: string,
+    reference: string,
+  ): Promise<WalletLedgerResult> {
+    const entry = await walletRepository.findTransactionByReference(reference);
+    if (!entry || entry.wallet.userId !== userId)
+      throw AppError.notFound("Wallet transaction");
+    if (entry.type !== "PHONE_TRANSFER")
+      throw AppError.badRequest(
+        "Only phone transfers can be confirmed this way",
+      );
+    return this.confirmPhoneTransfer(reference);
+  },
+
   // ------------------------------------------------------------- transfers
   /**
    * Peer-to-peer transfer: debits the sender and credits the recipient in one
@@ -134,7 +286,10 @@ export const walletService = {
    */
   async transfer(
     userId: string,
-    body: TransferBody,
+    body: TransferBody & {
+      /** Stamp the sender leg with the mobile-money route (phone transfers). */
+      via?: { provider: MobileMoneyProvider; phoneNumber: string };
+    },
   ): Promise<WalletLedgerResult> {
     if (body.recipientId === userId) {
       throw AppError.badRequest("You cannot send money to yourself");
@@ -192,6 +347,8 @@ export const walletService = {
             transferRef,
             note: body.note ?? null,
             counterpartyId: body.recipientId,
+            provider: body.via?.provider ?? null,
+            phoneNumber: body.via?.phoneNumber ?? null,
           },
           {
             walletId: recipientWallet.id,
@@ -352,11 +509,7 @@ export const walletService = {
   async getTransactionForUser(
     userId: string,
     id: string,
-  ): Promise<
-    WalletTransactionWithCounterparty & {
-      counterparty: (UserFollowRef & UserFollowState) | null;
-    }
-  > {
+  ): Promise<WalletTransactionWithCounterparty> {
     const wallet = await this.ensureWallet(userId);
     const transaction = await prisma.walletTransaction.findFirst({
       where: { id, walletId: wallet.id },
@@ -365,49 +518,24 @@ export const walletService = {
       },
     });
     if (!transaction) throw AppError.notFound("Wallet transaction");
-    if (!transaction.counterparty) {
-      return { ...transaction, counterparty: null };
-    }
-    const followState = await getFollowState(
-      userId,
-      transaction.counterparty.id,
-    );
-    return {
-      ...transaction,
-      counterparty: { ...transaction.counterparty, ...followState },
-    };
+    return { ...transaction };
   },
 
   // ------------------------------------------------------------ recipients
   /**
-   * Transfer recipients: with a search term, similarity matches win outright
-   * (follow flags still attached). Without one, mutual follows first (the
-   * payment inner circle), then the rest of the follow graph, then chat
-   * contacts and recent counterparties.
+   * Transfer recipients: WhatsApp-style — chat contacts first (people you
+   * have a conversation with), then recent counterparties. With a search
+   * term, similarity matches win outright.
    */
   async listRecipients(userId: string, search?: string | undefined) {
     if (search) {
-      const matches = await walletRepository.searchUsers(userId, search);
-      const ids = matches.map((match) => match.id);
-      const [following, followers] = await Promise.all([
-        userFollowRepository.findAnyFollowingIds(userId, ids),
-        userFollowRepository.findFollowerIds(userId, ids),
-      ]);
-      return matches.map<WalletRecipientWithFollow>((match) => ({
-        ...match,
-        // Any edge (pending request or accepted) marks a pursued contact.
-        isFollowing: following.has(match.id),
-        isMutual: following.has(match.id) && followers.has(match.id),
-      }));
+      return walletRepository.searchUsers(userId, search);
     }
 
-    const [mutualFollows, followedUsers, pendingOutgoing, contactIds] =
-      await Promise.all([
-        userFollowRepository.findMutualFollowing(userId, 20),
-        userFollowRepository.listFollowing(userId, 20),
-        userFollowRepository.listOutgoingAny(userId, 20),
-        walletRepository.findContactIds(userId),
-      ]);
+    const [contactIds, counterparties] = await Promise.all([
+      walletRepository.findContactIds(userId),
+      walletRepository.recentCounterparties(userId, 20),
+    ]);
     const contacts =
       contactIds.length > 0
         ? await walletRepository.findUsersByIds(contactIds)
@@ -417,32 +545,11 @@ export const walletService = {
       string,
       { id: string; name: string; image: string | null }
     >();
-    for (const mutual of mutualFollows) merged.set(mutual.id, mutual);
-    for (const followed of followedUsers) {
-      if (!merged.has(followed.id)) merged.set(followed.id, followed);
+    for (const contact of contacts) merged.set(contact.id, contact);
+    for (const counterparty of counterparties) {
+      if (!merged.has(counterparty.id))
+        merged.set(counterparty.id, counterparty);
     }
-    for (const pending of pendingOutgoing) {
-      if (!merged.has(pending.id)) merged.set(pending.id, pending);
-    }
-    for (const contact of contacts) {
-      if (!merged.has(contact.id)) merged.set(contact.id, contact);
-    }
-
-    const entries = [...merged.values()].slice(0, 20);
-    const [following, followers] = await Promise.all([
-      userFollowRepository.findAnyFollowingIds(
-        userId,
-        entries.map((entry) => entry.id),
-      ),
-      userFollowRepository.findFollowerIds(
-        userId,
-        entries.map((entry) => entry.id),
-      ),
-    ]);
-    return entries.map<WalletRecipientWithFollow>((entry) => ({
-      ...entry,
-      isFollowing: following.has(entry.id),
-      isMutual: following.has(entry.id) && followers.has(entry.id),
-    }));
+    return [...merged.values()].slice(0, 20);
   },
 };

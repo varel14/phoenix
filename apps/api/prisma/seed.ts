@@ -34,10 +34,26 @@ export const CANONICAL_PASSWORD = "password";
 const LISTENER_EMAIL = CANONICAL_LISTENER_EMAIL;
 /** Extra people for conversations, groups and calls with the test user. */
 const FRIENDS = [
-  { email: "marie@phoenix.local", name: "Marie Doumbia" },
-  { email: "david@phoenix.local", name: "David Koffi" },
-  { email: "grace@phoenix.local", name: "Grace Adjoua" },
-  { email: "imran@phoenix.local", name: "Imran Bakayoko" },
+  {
+    email: "marie@phoenix.local",
+    name: "Marie Doumbia",
+    phone: "+225 07 77 00 00 04",
+  },
+  {
+    email: "david@phoenix.local",
+    name: "David Koffi",
+    phone: "+225 07 77 00 00 05",
+  },
+  {
+    email: "grace@phoenix.local",
+    name: "Grace Adjoua",
+    phone: "+225 07 77 00 00 06",
+  },
+  {
+    email: "imran@phoenix.local",
+    name: "Imran Bakayoko",
+    phone: "+225 07 77 00 00 07",
+  },
 ];
 
 const SOUNDHELIX = (n: number) =>
@@ -561,6 +577,7 @@ async function ensureDemoUser(input: {
   name: string;
   role: "USER" | "ARTIST";
   password?: string;
+  phone?: string;
 }): Promise<string> {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
@@ -577,7 +594,11 @@ async function ensureDemoUser(input: {
   }
   const user = await prisma.user.update({
     where: { email: input.email },
-    data: { emailVerified: true, role: input.role },
+    data: {
+      emailVerified: true,
+      role: input.role,
+      ...(input.phone ? { phone: input.phone } : {}),
+    },
   });
   if (input.password) {
     // Keep canonical credentials in sync even when the account predates this
@@ -675,6 +696,7 @@ async function main() {
     name: "Nina Listener",
     role: "USER",
     password: CANONICAL_PASSWORD,
+    phone: "+225 07 00 00 00 01",
   });
 
   let songCount = 0;
@@ -1646,6 +1668,7 @@ async function seedTestUserWorld(ctx: {
       email: friend.email,
       name: friend.name,
       role: "USER",
+      phone: friend.phone,
     });
   }
 

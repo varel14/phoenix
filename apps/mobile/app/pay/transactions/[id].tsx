@@ -4,13 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useWalletTransaction } from "@/hooks/use-wallet";
-import { useFollowUser, useUnfollowUser } from "@/hooks/use-follows";
-import {
-  AppText,
-  ErrorView,
-  IconButton,
-  LoadingView,
-} from "@/components/ui";
+import { AppText, ErrorView, IconButton, LoadingView } from "@/components/ui";
 import { UserAvatar } from "@/components/chat/user-avatar";
 import {
   isCredit,
@@ -19,7 +13,6 @@ import {
 } from "@/components/wallet-transaction-row";
 import {
   FadeIn,
-  FollowButton,
   PayBackdrop,
   StatusChip,
   SummaryRow,
@@ -27,7 +20,8 @@ import {
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatMoney } from "@/utils/money";
-import { WALLET_TYPE_LABELS } from "@/types/wallet";
+import { formatPhone } from "@/utils/format";
+import { MOBILE_MONEY_LABELS, WALLET_TYPE_LABELS } from "@/types/wallet";
 
 /** Full receipt for one wallet transaction (note, balance after, references). */
 export default function WalletTransactionDetailScreen() {
@@ -36,21 +30,10 @@ export default function WalletTransactionDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const query = useWalletTransaction(params.id ?? "");
   const transaction = query.data;
-  const followUser = useFollowUser();
-  const unfollowUser = useUnfollowUser();
 
   // Follow state lives on the cached counterparty; the follow hooks patch it
   // optimistically, so this screen updates without extra local state.
   const counterparty = transaction?.counterparty ?? null;
-  const isFollowing = counterparty?.isFollowing ?? false;
-  const isMutual = counterparty?.isMutual ?? false;
-  const followBusy = followUser.isPending || unfollowUser.isPending;
-
-  function toggleFollow() {
-    if (!counterparty || followBusy) return;
-    const mutation = isFollowing ? unfollowUser : followUser;
-    mutation.mutate(counterparty.id);
-  }
 
   const credit = transaction ? isCredit(transaction) : false;
   const amountColor = credit ? colors.success : colors.text;
@@ -184,6 +167,18 @@ export default function WalletTransactionDetailScreen() {
               {transaction.note ? (
                 <SummaryRow label="Note" value={transaction.note} />
               ) : null}
+              {transaction.provider ? (
+                <SummaryRow
+                  label="Opérateur"
+                  value={MOBILE_MONEY_LABELS[transaction.provider]}
+                />
+              ) : null}
+              {transaction.phoneNumber ? (
+                <SummaryRow
+                  label="Numéro"
+                  value={formatPhone(transaction.phoneNumber)}
+                />
+              ) : null}
               {transaction.balanceAfter != null ? (
                 <SummaryRow
                   label="Solde après opération"
@@ -229,21 +224,7 @@ export default function WalletTransactionDetailScreen() {
                   <AppText variant="subheading" numberOfLines={1}>
                     {transaction.counterparty.name}
                   </AppText>
-                  {isFollowing ? (
-                    <AppText
-                      variant="small"
-                      color={isMutual ? colors.success : colors.textFaint}
-                    >
-                      {isMutual ? "Suivi mutuel" : "Suivi"}
-                    </AppText>
-                  ) : null}
                 </View>
-                <FollowButton
-                  isFollowing={isFollowing}
-                  isMutual={isMutual}
-                  loading={followBusy}
-                  onPress={toggleFollow}
-                />
               </View>
             </FadeIn>
           ) : null}

@@ -14,6 +14,11 @@ export const searchMessagesQuerySchema = z.object({
   q: z.string().trim().min(1).max(100),
 });
 
+/** Device contact phone numbers to match against app users. */
+export const matchContactsBodySchema = z.object({
+  phones: z.array(z.string().trim().min(6).max(32)).max(500),
+});
+
 export const listMessagesQuerySchema = paginationSchema.extend({});
 
 export const messageAttachmentSchema = z.object({
@@ -90,5 +95,6 @@ export type CreateConversationBody = z.infer<
 >;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
 export type SearchMessagesQuery = z.infer<typeof searchMessagesQuerySchema>;
+export type MatchContactsBody = z.infer<typeof matchContactsBodySchema>;
 export type MessageAttachmentInput = z.infer<typeof messageAttachmentSchema>;
 export type SendMessageBody = z.infer<typeof sendMessageBodySchema>;

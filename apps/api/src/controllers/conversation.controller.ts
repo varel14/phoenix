@@ -10,6 +10,7 @@ import {
 } from "../middleware/validate.js";
 import type { AuthenticatedUser } from "../types/express.d.js";
 import type {
+  MatchContactsBody,
   SearchMessagesQuery,
   CreateConversationBody,
   ListConversationsQuery,
@@ -32,6 +33,27 @@ export const conversationController = {
     const { search } = validatedQuery<SearchUsersQuery>(req);
     const users = await conversationService.searchUsers(user.id, search);
     sendSuccess(res, users);
+  },
+
+  async matchContacts(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { phones } = validatedBody<MatchContactsBody>(req);
+    const users = await conversationService.matchContacts(user.id, phones);
+    sendSuccess(res, users);
+  },
+
+  async acceptRequest(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
+    const result = await conversationService.acceptRequest(user.id, id);
+    sendSuccess(res, result);
+  },
+
+  async hideConversation(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
+    const result = await conversationService.hideConversation(user.id, id);
+    sendSuccess(res, result);
   },
 
   async list(req: Request, res: Response) {

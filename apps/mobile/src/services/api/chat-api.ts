@@ -11,8 +11,45 @@ import type {
 export const conversationsApi = {
   async searchUsers(search: string) {
     const result = await apiFetch<{
-      data: Array<{ id: string; name: string; image: string | null }>;
+      data: Array<{
+        id: string;
+        name: string;
+        image: string | null;
+        phone: string | null;
+      }>;
     }>(`/api/v1/conversations/users?search=${encodeURIComponent(search)}`);
+    return result.data;
+  },
+
+  /** WhatsApp-style contact matching by phone number (server-side suffix match). */
+  async matchContacts(phones: string[]) {
+    const result = await apiFetch<{
+      data: Array<{
+        id: string;
+        name: string;
+        image: string | null;
+        phone: string | null;
+      }>;
+    }>("/api/v1/conversations/match-contacts", {
+      method: "POST",
+      body: { phones },
+    });
+    return result.data;
+  },
+
+  async acceptRequest(id: string) {
+    const result = await apiFetch<{ data: { accepted: boolean } }>(
+      `/api/v1/conversations/${id}/accept`,
+      { method: "POST" },
+    );
+    return result.data;
+  },
+
+  async hide(id: string) {
+    const result = await apiFetch<{ data: { hidden: boolean } }>(
+      `/api/v1/conversations/${id}/hide`,
+      { method: "POST" },
+    );
     return result.data;
   },
 

@@ -14,6 +14,7 @@ export default function RegisterScreen() {
   const refresh = useAuthStore((state) => state.refresh);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,11 +31,15 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
-      const { error: signUpError } = await authClient.signUp.email({
+      // `phone` is a server-side additional field; the untyped client literal
+      // is widened so the field reaches better-auth.
+      const signUpBody = {
         name: name.trim(),
         email: email.trim(),
         password,
-      });
+        phone: phone.trim() || undefined,
+      } as Parameters<typeof authClient.signUp.email>[0];
+      const { error: signUpError } = await authClient.signUp.email(signUpBody);
       if (signUpError) {
         setError(signUpError.message ?? "Could not create your account");
         return;

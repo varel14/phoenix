@@ -37,6 +37,12 @@ export const auth = betterAuth({
         defaultValue: "USER",
         input: false, // role is only changed server-side (artist onboarding)
       },
+      // WhatsApp-style identity: chats are reachable by phone number.
+      phone: {
+        type: "string",
+        required: false,
+        input: true,
+      },
     },
   },
   advanced: {

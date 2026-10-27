@@ -18,7 +18,6 @@ import {
   useWallet,
   useWalletRecipients,
 } from "@/hooks/use-wallet";
-import { useFollowUser, useUnfollowUser } from "@/hooks/use-follows";
 import {
   AppText,
   Button,
@@ -32,7 +31,6 @@ import {
   AmountKeyboard,
   Chip,
   FadeIn,
-  FollowButton,
   PayBackdrop,
   PeerFlow,
   QuickRecipient,
@@ -109,9 +107,6 @@ export default function SendScreen() {
   const sessionUser = useAuthStore((state) => state.user);
   const walletQuery = useWallet();
   const transfer = useTransfer();
-  const followUser = useFollowUser();
-  const unfollowUser = useUnfollowUser();
-  const [followBusyId, setFollowBusyId] = useState<string | null>(null);
 
   // Deep link from the "Envoi rapide" rail: recipient is preselected.
   // Follow flags are unknown here — they are never rendered in this stage.
@@ -178,15 +173,6 @@ export default function SendScreen() {
     setAmountInput(digits ? formatAmount(Number.parseInt(digits, 10)) : "");
   }
 
-  /** Follow/unfollow straight from the contact list; caches update locally. */
-  function toggleFollow(candidate: WalletRecipient) {
-    if (followBusyId) return;
-    setFollowBusyId(candidate.id);
-    const mutation = candidate.isFollowing ? unfollowUser : followUser;
-    mutation.mutate(candidate.id, {
-      onSettled: () => setFollowBusyId(null),
-    });
-  }
 
   function selectRecipient(candidate: WalletRecipient) {
     setRecipient(candidate);
@@ -573,30 +559,12 @@ export default function SendScreen() {
                           <AppText variant="subheading" numberOfLines={1}>
                             {candidate.name}
                           </AppText>
-                          {candidate.isMutual ? (
-                            <AppText variant="small" color={colors.success}>
-                              Suivi mutuel
-                            </AppText>
-                          ) : candidate.isFollowing ? (
-                            <AppText variant="small" color={colors.textFaint}>
-                              Suivi
-                            </AppText>
-                          ) : null}
                         </View>
-                        {!candidate.isFollowing ? (
-                          <FollowButton
-                            isFollowing={false}
-                            isMutual={false}
-                            loading={followBusyId === candidate.id}
-                            onPress={() => toggleFollow(candidate)}
-                          />
-                        ) : (
-                          <Ionicons
-                            name="chevron-forward"
-                            size={18}
-                            color={colors.textFaint}
-                          />
-                        )}
+                        <Ionicons
+                          name="chevron-forward"
+                          size={18}
+                          color={colors.textFaint}
+                        />
                       </View>
                     </PressableScale>
                   ))}

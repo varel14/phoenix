@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { conversationsApi } from "@/services/api/chat-api";
+// Message requests: Accept keeps the chat, the X hides it (WhatsApp-style).
 import { useConversations, useCallHistory } from "@/hooks/use-scl";
 import { useAuthStore } from "@/stores/auth-store";
 import { UserAvatar } from "@/components/chat/user-avatar";

@@ -26,8 +26,6 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const created = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -36,8 +34,6 @@ describe("SCL conversations", () => {
     expect(created.body.data.type).toBe("DIRECT");
     expect(created.body.data.participants).toHaveLength(2);
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const again = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -62,8 +58,6 @@ describe("SCL conversations", () => {
     const mallory = await createUser("Mallory", uniqueEmail("mallory"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const created = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -92,8 +86,6 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob-msg"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const conversation = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -138,8 +130,6 @@ describe("SCL conversations", () => {
     const alice = await createUser("Alice", uniqueEmail("alice-voice"));
     const bob = await createUser("Bob", uniqueEmail("bob-voice"));
     const app = await api();
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const conversation = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -169,8 +159,6 @@ describe("SCL conversations", () => {
     const alice = await createUser("Alice", uniqueEmail("alice-media"));
     const bob = await createUser("Bob", uniqueEmail("bob-media"));
     const app = await api();
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const conversation = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -311,8 +299,6 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob-draft"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const draft = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -342,8 +328,6 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob-atomic"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const first = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -369,8 +353,6 @@ describe("SCL conversations", () => {
     const bob = await createUser("Bob", uniqueEmail("bob-trgm-msg"));
     const app = await api();
 
-    // mutual follow prerequisite
-    await establishMutual(app, alice, bob);
     const created = await app
       .post("/api/v1/conversations")
       .set("Cookie", alice.cookie)
@@ -390,5 +372,88 @@ describe("SCL conversations", () => {
     expect(
       res.body.data.some((c: { id: string }) => c.id === created.body.data.id),
     ).toBe(true);
+  });
+
+  it("arrives as a message request until the recipient accepts", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-req"));
+    const bob = await createUser("Bob", uniqueEmail("bob-req"));
+    const app = await api();
+
+    const created = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId, message: { type: "TEXT", content: "Bonjour, je te contacte" } });
+    expect(created.status).toBe(201);
+
+    // Recipient: pending request (acceptedAt null on their membership).
+    const member = await prisma.conversationParticipant.findFirst({
+      where: { conversationId: created.body.data.id, userId: bob.userId },
+    });
+    expect(member?.acceptedAt).toBeNull();
+
+    // Initiator engaged immediately.
+    const initiator = await prisma.conversationParticipant.findFirst({
+      where: { conversationId: created.body.data.id, userId: alice.userId },
+    });
+    expect(initiator?.acceptedAt).not.toBeNull();
+
+    const accept = await app
+      .post(`/api/v1/conversations/${created.body.data.id}/accept`)
+      .set("Cookie", bob.cookie);
+    expect(accept.status).toBe(200);
+    expect(accept.body.data.accepted).toBe(true);
+  });
+
+  it("hides a conversation with the X button and re-shows on a new message", async () => {
+    const alice = await createUser("Alice", uniqueEmail("alice-hide"));
+    const bob = await createUser("Bob", uniqueEmail("bob-hide"));
+    const app = await api();
+
+    const created = await app
+      .post("/api/v1/conversations")
+      .set("Cookie", alice.cookie)
+      .send({ recipientId: bob.userId, message: { type: "TEXT", content: "Coucou" } });
+
+    // Bob dismisses the request with the X button.
+    const hide = await app
+      .post(`/api/v1/conversations/${created.body.data.id}/hide`)
+      .set("Cookie", bob.cookie);
+    expect(hide.status).toBe(200);
+
+    let list = await app.get("/api/v1/conversations").set("Cookie", bob.cookie);
+    expect(list.body.data.some((c: { id: string }) => c.id === created.body.data.id)).toBe(false);
+
+    // A new incoming message re-shows the conversation.
+    await app
+      .post(`/api/v1/conversations/${created.body.data.id}/messages`)
+      .set("Cookie", alice.cookie)
+      .send({ type: "TEXT", content: "Re-coucou" });
+    list = await app.get("/api/v1/conversations").set("Cookie", bob.cookie);
+    expect(list.body.data.some((c: { id: string }) => c.id === created.body.data.id)).toBe(true);
+  });
+
+  it("matches contacts by phone number (typo-proof suffix matching)", async () => {
+    const suffix = String(Date.now()).slice(-8);
+    const alice = await createUser("Alice", uniqueEmail("alice-match"));
+    await prisma.user.update({
+      where: { id: alice.userId },
+      data: { phone: `+225 07 88 ${suffix.slice(0, 2)} ${suffix.slice(2, 4)} ${suffix.slice(4)}` },
+    });
+    const bob = await createUser("Bob", uniqueEmail("bob-match"));
+    await prisma.user.update({
+      where: { id: bob.userId },
+      data: { phone: `+225 01 42 ${suffix.slice(0, 2)} ${suffix.slice(2, 4)} ${suffix.slice(4)}` },
+    });
+    const app = await api();
+
+    // Formatted differently + country-code variants still match.
+    const res = await app
+      .post("/api/v1/conversations/match-contacts")
+      .set("Cookie", alice.cookie)
+      .send({ phones: [`+225 01 42 ${suffix.slice(0, 2)} ${suffix.slice(2, 4)} ${suffix.slice(4)}`, `0788${suffix}`, "+33 6 00 00 00 00"] });
+    expect(res.status).toBe(200);
+    const matched = res.body.data.map((u: { id: string }) => u.id);
+    expect(matched).toContain(bob.userId);
+    expect(matched).not.toContain(alice.userId);
   });
 });

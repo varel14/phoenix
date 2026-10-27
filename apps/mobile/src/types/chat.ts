@@ -4,6 +4,7 @@ export interface ConversationUser {
   id: string;
   name: string;
   image: string | null;
+  phone?: string | null;
 }
 
 export interface ConversationParticipant {
@@ -12,6 +13,9 @@ export interface ConversationParticipant {
   userId: string;
   joinedAt: string;
   lastReadAt: string | null;
+  /** Message-request lifecycle: null while the recipient has not accepted. */
+  acceptedAt: string | null;
+  hiddenAt: string | null;
   user: ConversationUser;
 }
 

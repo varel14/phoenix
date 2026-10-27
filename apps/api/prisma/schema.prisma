@@ -136,6 +136,29 @@ enum WalletTransactionType {
   TOPUP
   TRANSFER_IN
   TRANSFER_OUT
+  PHONE_TRANSFER
+}
+
+/// Real-world mobile money operators the wallet can wire money to.
+enum MobileMoneyProvider {
+  ORANGE_MONEY
+  MTN_MONEY
+}
+
+/// A user's mobile money number (Orange/MTN). Registered numbers act as
+/// wallet addresses: anyone knowing the number can send money to the owner,
+/// and the owner uses them as payout/send methods.
+model PaymentMethod {
+  id          String             @id @default(uuid())
+  userId      String             @map("user_id")
+  provider    MobileMoneyProvider
+  phoneNumber String             @unique @map("phone_number")
+  isDefault   Boolean            @default(false) @map("is_default")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payment_methods")
 }
 
 enum WalletTransactionStatus {
@@ -168,6 +191,8 @@ model user {
   id            String     @id @default(uuid())
   name          String
   email         String     @unique
+  // WhatsApp-style identity: conversations are reachable by phone number.
+  phone         String?    @unique
   emailVerified Boolean    @default(false) @map("email_verified")
   image         String?
   role          UserRole   @default(USER)
@@ -196,6 +221,7 @@ model user {
   cart           Cart?
   wallet         Wallet?
   walletCounterpartyEntries WalletTransaction[] @relation("WalletCounterparty")
+  paymentMethods PaymentMethod[]
   prayers        Prayer[]
   prayerFavorites PrayerFavorite[]
   sermons        Sermon[]
@@ -548,6 +574,11 @@ model ConversationParticipant {
   userId         String    @map("user_id")
   joinedAt       DateTime  @default(now()) @map("joined_at")
   lastReadAt     DateTime? @map("last_read_at")
+  // Message-request lifecycle: the recipient of a brand-new conversation has
+  // acceptedAt = null until they tap Accept. hiddenAt dismisses the row
+  // (a new incoming message clears it, like WhatsApp).
+  acceptedAt     DateTime? @map("accepted_at")
+  hiddenAt       DateTime? @map("hidden_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         user         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -760,20 +791,22 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id             String                  @id @default(uuid())
-  walletId       String                  @map("wallet_id")
+  id             String                   @id @default(uuid())
+  walletId       String                   @map("wallet_id")
   type           WalletTransactionType
-  status         WalletTransactionStatus @default(PENDING)
+  status         WalletTransactionStatus  @default(PENDING)
   amount         Int
-  balanceAfter   Int?                    @map("balance_after")
-  currency       String                  @default("XOF")
-  reference      String                  @unique
-  transferRef    String?                 @map("transfer_ref")
+  balanceAfter   Int?                     @map("balance_after")
+  currency       String                   @default("XOF")
+  reference      String                   @unique
+  transferRef    String?                  @map("transfer_ref")
   note           String?
-  counterpartyId String?                 @map("counterparty_id")
+  counterpartyId String?                  @map("counterparty_id")
+  phoneNumber    String?                  @map("phone_number")
+  provider       MobileMoneyProvider?
   metadata       Json?
-  createdAt      DateTime                @default(now()) @map("created_at")
-  updatedAt      DateTime                @updatedAt @map("updated_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
 
   wallet       Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
   counterparty user?  @relation("WalletCounterparty", fields: [counterpartyId], references: [id], onDelete: SetNull)
