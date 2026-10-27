@@ -99,3 +99,14 @@ export function formatChatTimestamp(iso: string): string {
       : { day: "2-digit", month: "2-digit", year: "numeric" };
   return date.toLocaleDateString("fr-FR", options);
 }
+
+/**
+ * Displays a normalized phone number in pairs: 0707070707 → "07 07 07 07 07".
+ * International numbers keep their +prefix and group from the right.
+ */
+export function formatPhone(raw: string): string {
+  const international = raw.startsWith("+");
+  const digits = raw.replace(/\D/g, "");
+  const groups = digits.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
+  return international ? `+${groups}` : groups;
+}

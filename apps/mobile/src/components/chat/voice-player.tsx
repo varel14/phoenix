@@ -6,8 +6,7 @@ import { AppText, PressableScale } from "@/components/ui";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatDuration } from "@/utils/format";
-import { API_URL } from "@/services/api/api-client";
-import { resolveVoiceNote } from "@/services/media/voice-cache";
+import { resolveVoiceNote, voiceSourceUrl } from "@/services/media/voice-cache";
 import type { MessageAttachment } from "@/types/chat";
 
 interface VoicePlayerProps {
@@ -53,9 +52,7 @@ export function VoicePlayer({ attachment, incoming }: VoicePlayerProps) {
     [attachment.id, attachment.storageKey],
   );
 
-  const sourceUri = attachment.url.startsWith("http")
-    ? attachment.url
-    : `${API_URL}${attachment.url}`;
+  const sourceUri = voiceSourceUrl(attachment.url);
   const player = useAudioPlayer(null);
   const finishedRef = useRef(false);
 

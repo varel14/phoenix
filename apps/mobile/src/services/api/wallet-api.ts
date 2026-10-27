@@ -4,6 +4,7 @@ import type {
   WalletRecipient,
   WalletTransaction,
   WalletTransactionType,
+  MobileMoneyProvider,
 } from "@/types/wallet";
 
 export const walletApi = {
@@ -65,6 +66,34 @@ export const walletApi = {
         duplicate: boolean;
       };
     }>("/api/v1/wallet/transfers", { method: "POST", body });
+    return result.data;
+  },
+
+  /** Wire money to a real-world Orange Money / MTN number (PENDING). */
+  async initiatePhoneTransfer(body: {
+    phoneNumber: string;
+    provider: MobileMoneyProvider;
+    amount: number;
+    note?: string;
+  }) {
+    const result = await apiFetch<{ data: { transaction: WalletTransaction } }>(
+      "/api/v1/wallet/phone-transfers",
+      { method: "POST", body },
+    );
+    return result.data.transaction;
+  },
+
+  /** Dev-only confirmation for phone transfers (provider-webhook stand-in). */
+  async devConfirmPhoneTransfer(reference: string) {
+    const result = await apiFetch<{
+      data: {
+        transaction: WalletTransaction;
+        wallet: Wallet;
+        duplicate: boolean;
+      };
+    }>(`/api/v1/wallet/phone-transfers/${reference}/dev-confirm`, {
+      method: "POST",
+    });
     return result.data;
   },
 

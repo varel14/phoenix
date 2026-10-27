@@ -47,6 +47,36 @@ const envSchema = z.object({
       }
       return "phoenix-development-webhook-secret-do-not-use";
     }),
+  /**
+   * Secret used to derive the rotating app-lock codes — HMAC of the 3-day
+   * window index. Rotating the secret instantly invalidates current codes.
+   */
+  APP_LOCK_SECRET: z
+    .string()
+    .min(32, "APP_LOCK_SECRET must be at least 32 characters (generate one with: openssl rand -base64 32)")
+    .optional()
+    .transform((value) => {
+      if (value) return value;
+      if (process.env["NODE_ENV"] === "production") {
+        throw new Error("APP_LOCK_SECRET is required in production");
+      }
+      return "phoenix-development-app-lock-secret-do-not-use";
+    }),
+  /**
+   * Shared admin key for GET /app-lock/code — the owner fetches the current
+   * unlock code with curl and reads it to whoever must unlock the app.
+   */
+  APP_LOCK_ADMIN_KEY: z
+    .string()
+    .min(32, "APP_LOCK_ADMIN_KEY must be at least 32 characters (generate one with: openssl rand -base64 32)")
+    .optional()
+    .transform((value) => {
+      if (value) return value;
+      if (process.env["NODE_ENV"] === "production") {
+        throw new Error("APP_LOCK_ADMIN_KEY is required in production");
+      }
+      return "phoenix-development-app-lock-admin-key";
+    }),
   /** Max accepted upload size in megabytes. */
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
   /** How long an unanswered call keeps ringing (ms) before the server marks it MISSED. */

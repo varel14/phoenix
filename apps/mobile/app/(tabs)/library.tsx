@@ -18,6 +18,9 @@ type Section = "FAVORITES" | "PLAYLISTS" | "MUSIC" | "VIDEOS";
 
 export default function LibraryScreen() {
   const [section, setSection] = useState<Section>("FAVORITES");
+  const downloadLibrary = useDownloadsStore((state) => state.library);
+  const songDownloads = downloadLibrary.filter((entry) => entry.mediaType === "SONG").length;
+  const videoDownloads = downloadLibrary.filter((entry) => entry.mediaType === "VIDEO").length;
 
   return (
     <View style={{ flex: 1 }}>
@@ -25,10 +28,10 @@ export default function LibraryScreen() {
         <AppText variant="title">Bibliothèque</AppText>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.sm, paddingVertical: spacing.md }}>
-        <Chip label="Favorites" active={section === "FAVORITES"} onPress={() => setSection("FAVORITES")} />
+        <Chip label="Favoris" active={section === "FAVORITES"} onPress={() => setSection("FAVORITES")} />
         <Chip label="Playlists" active={section === "PLAYLISTS"} onPress={() => setSection("PLAYLISTS")} />
-        <Chip label="Downloaded music" active={section === "MUSIC"} onPress={() => setSection("MUSIC")} />
-        <Chip label="Downloaded videos" active={section === "VIDEOS"} onPress={() => setSection("VIDEOS")} />
+        <Chip label={songDownloads > 0 ? `Téléchargés · ${songDownloads}` : "Téléchargés"} active={section === "MUSIC"} onPress={() => setSection("MUSIC")} />
+        <Chip label={videoDownloads > 0 ? `Vidéos · ${videoDownloads}` : "Vidéos"} active={section === "VIDEOS"} onPress={() => setSection("VIDEOS")} />
       </ScrollView>
 
       {section === "FAVORITES" ? <FavoritesSection /> : null}
@@ -219,8 +222,12 @@ function DownloadsSection({ mediaType }: { mediaType: "SONG" | "VIDEO" }) {
   if (items.length === 0) {
     return (
       <EmptyView
-        title={mediaType === "SONG" ? "No downloaded music" : "No downloaded videos"}
-        subtitle="Use the ⋮ menu on any item to save it for offline."
+        title={mediaType === "SONG" ? "Aucun titre téléchargé" : "Aucune vidéo téléchargée"}
+        subtitle={
+          mediaType === "SONG"
+            ? "Téléchargez un titre pour 1 FCFA via le menu ⋮ et écoutez-le hors connexion."
+            : "Utilisez le menu ⋮ sur une vidéo pour l'enregistrer hors connexion."
+        }
       />
     );
   }

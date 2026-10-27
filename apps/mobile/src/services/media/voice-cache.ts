@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 import { storage as AsyncStorage } from "@/services/storage/mmkv";
+import { API_URL } from "@/services/api/api-client";
 
 /**
  * Voice-note cache: a voice message must be fully downloaded before it can
@@ -59,6 +60,62 @@ async function hydrate(): Promise<void> {
     }
   } catch {
     // Corrupt index — entries rebuild on next download.
+  }
+}
+
+/**
+ * Attachment url (server-relative or absolute) → the exact URI the player
+ * resolves against. Seeding and lookup must agree on this string, since cache
+ * entries are matched on it.
+ */
+export function voiceSourceUrl(url: string): string {
+  return url.startsWith("http") ? url : `${API_URL}${url}`;
+}
+
+/**
+ * Hands an already-local recording (the clip the user just sent) to the cache:
+ * the file is moved into the cache directory and registered under the upload's
+ * storage key, so the sent bubble plays instantly instead of re-downloading
+ * what is already on disk. Best-effort — on failure the note simply downloads
+ * on first play, as before.
+ */
+export async function seedVoiceNote(params: {
+  storageKey: string;
+  sourceUrl: string;
+  localUri: string;
+}): Promise<void> {
+  const { storageKey, sourceUrl, localUri } = params;
+  if (!storageKey || !sourceUrl || !localUri) return;
+  const url = voiceSourceUrl(sourceUrl);
+  await hydrate();
+  try {
+    const local = new File(localUri);
+    if (!local.exists) return;
+    const previous = memory.get(storageKey);
+    if (previous) {
+      try {
+        const stale = new File(previous.fileUri);
+        if (stale.exists) stale.delete();
+      } catch {
+        // best effort
+      }
+      memory.delete(storageKey);
+    }
+    const dest = new File(cacheDir(), fileNameFor(storageKey, url));
+    if (dest.exists) dest.delete();
+    local.move(dest);
+    memory.set(storageKey, {
+      storageKey,
+      fileUri: dest.uri,
+      sourceUrl: url,
+      fileSizeBytes: dest.size ?? 0,
+      downloadedAt: new Date().toISOString(),
+      lastPlayedAt: new Date().toISOString(),
+    });
+    await persist();
+    void evictIfNeeded();
+  } catch {
+    // Cache seeding is an optimization — download-on-play still works.
   }
 }
 

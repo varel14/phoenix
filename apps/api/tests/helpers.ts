@@ -29,7 +29,7 @@ export async function truncateAll() {
      push_tokens,
      payment_categories, payment_services, payment_service_fields,
      payment_transactions, payment_receipts,
-     wallets, wallet_transactions,
+     wallets, wallet_transactions, payment_methods,
      product_categories, products, product_variants, product_images,
      carts, cart_items, orders, order_items, order_addresses
      CASCADE`,

@@ -14,8 +14,10 @@ import {
   validatedQuery,
 } from "../middleware/validate.js";
 import type {
+  CreatePaymentMethodBody,
   InitiateTopupBody,
   ListWalletTransactionsQuery,
+  PhoneTransferBody,
   TransferBody,
   WalletRecipientsQuery,
   referenceParamsSchema,
@@ -54,6 +56,59 @@ export const walletController = {
     const body = validatedBody<InitiateTopupBody>(req);
     const transaction = await walletService.initiateTopup(user.id, body);
     sendSuccess(res, { transaction }, 201);
+  },
+
+  /** Wires money to a real-world Orange Money / MTN number (PENDING). */
+  async initiatePhoneTransfer(req: Request, res: Response) {
+    const user = requireUser(req);
+    const body = validatedBody<PhoneTransferBody>(req);
+    const transaction = await walletService.initiatePhoneTransfer(user.id, body);
+    sendSuccess(res, { transaction }, 201);
+  },
+
+  // ------------------------------------------------------ payment methods
+  async listPaymentMethods(req: Request, res: Response) {
+    const user = requireUser(req);
+    const methods = await walletService.listPaymentMethods(user.id);
+    sendSuccess(res, methods);
+  },
+
+  async createPaymentMethod(req: Request, res: Response) {
+    const user = requireUser(req);
+    const body = validatedBody<CreatePaymentMethodBody>(req);
+    const method = await walletService.createPaymentMethod(user.id, body);
+    sendSuccess(res, { method }, 201);
+  },
+
+  async deletePaymentMethod(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
+    await walletService.deletePaymentMethod(user.id, id);
+    res.status(204).end();
+  },
+
+  async setDefaultPaymentMethod(req: Request, res: Response) {
+    const user = requireUser(req);
+    const { id } = validatedParams<z.infer<typeof idParamsSchema>>(req);
+    await walletService.setDefaultPaymentMethod(user.id, id);
+    const methods = await walletService.listPaymentMethods(user.id);
+    sendSuccess(res, methods);
+  },
+
+  /**
+   * Development shortcut: confirms a pending phone transfer through the same
+   * pipeline a mobile-money webhook would drive. Disabled in production.
+   */
+  async devConfirmPhoneTransfer(req: Request, res: Response) {
+    if (env.isProduction) throw AppError.notFound();
+    const user = requireUser(req);
+    const { reference } =
+      validatedParams<z.infer<typeof referenceParamsSchema>>(req);
+    const result = await walletService.devConfirmPhoneTransfer(
+      user.id,
+      reference,
+    );
+    sendSuccess(res, result);
   },
 
   /**

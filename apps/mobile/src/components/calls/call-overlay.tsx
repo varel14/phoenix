@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { RTCView } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "@/stores/auth-store";
+import { useAppLock } from "@/stores/app-lock-store";
 import { useCallStore, type CallPhase } from "@/stores/call-store";
 import { webrtcService } from "@/services/calls/webrtc.service";
 import { UserAvatar } from "@/components/chat/user-avatar";
@@ -30,7 +31,9 @@ export function CallOverlay() {
   const phase = useCallStore((state) => state.phase);
   const call = useCallStore((state) => state.call);
   const error = useCallStore((state) => state.error);
-  const visible = phase !== "idle" && call != null;
+  // A locked device is not usable — calls cannot be placed or answered.
+  const locked = useAppLock();
+  const visible = phase !== "idle" && call != null && !locked;
 
   if (!visible || !call) return null;
   return <CallOverlayContent call={call} phase={phase} error={error} />;

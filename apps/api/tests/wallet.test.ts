@@ -15,7 +15,7 @@ describe("Wallet", () => {
     await prisma.$executeRawUnsafe(
       `TRUNCATE users, sessions, accounts, verifications,
        conversations, conversation_participants, messages, message_attachments, calls,
-       wallets, wallet_transactions CASCADE`,
+       wallets, wallet_transactions, payment_methods CASCADE`,
     );
   });
 
@@ -281,5 +281,275 @@ describe("Wallet", () => {
     expect(searched.body.data.map((r: { id: string }) => r.id)).toContain(
       aloof.userId,
     );
+  });
+
+  it("wires money to a real-world phone number after provider confirmation", async () => {
+    const sender = await createUser("Yao", uniqueEmail("yao-phone"));
+    const app = await api();
+
+    const topup = await app
+      .post("/api/v1/wallet/topups")
+      .set("Cookie", sender.cookie)
+      .send({ amount: 5_000 });
+    await app
+      .post(
+        `/api/v1/wallet/topups/${topup.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", sender.cookie);
+
+    // Orange Money transfer to an unknown number: created PENDING, no debit yet.
+    const initiated = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", sender.cookie)
+      .send({
+        phoneNumber: "07 07 07 07 07",
+        provider: "ORANGE_MONEY",
+        amount: 2_000,
+        note: "Frais de transport",
+      });
+    expect(initiated.status).toBe(201);
+    expect(initiated.body.data.transaction).toMatchObject({
+      type: "PHONE_TRANSFER",
+      status: "PENDING",
+      amount: 2_000,
+      provider: "ORANGE_MONEY",
+      phoneNumber: "0707070707", // separators stripped
+    });
+    const afterInitiate = await app
+      .get("/api/v1/wallet")
+      .set("Cookie", sender.cookie);
+    expect(afterInitiate.body.data.wallet.balance).toBe(5_000);
+
+    // Confirmation (the provider-webhook entry point) debits the wallet.
+    const confirmed = await app
+      .post(
+        `/api/v1/wallet/phone-transfers/${initiated.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", sender.cookie);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.data.transaction).toMatchObject({
+      status: "SUCCESS",
+      balanceAfter: 3_000,
+    });
+    expect(confirmed.body.data.wallet.balance).toBe(3_000);
+
+    // Idempotent: re-confirming returns the current state without a re-debit.
+    const again = await app
+      .post(
+        `/api/v1/wallet/phone-transfers/${initiated.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", sender.cookie);
+    expect(again.body.data.duplicate).toBe(true);
+    expect(again.body.data.wallet.balance).toBe(3_000);
+
+    // Appears in the ledger.
+    const ledger = await app
+      .get("/api/v1/wallet/transactions?type=PHONE_TRANSFER")
+      .set("Cookie", sender.cookie);
+    expect(ledger.body.data).toHaveLength(1);
+    expect(ledger.body.data[0]).toMatchObject({
+      provider: "ORANGE_MONEY",
+      phoneNumber: "0707070707",
+    });
+  });
+
+  it("rejects phone transfers that exceed the balance and malformed inputs", async () => {
+    const broke = await createUser("Awa B", uniqueEmail("awa-phone"));
+    const app = await api();
+
+    // Fail fast at initiation when the balance cannot cover the amount.
+    const tooBig = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", broke.cookie)
+      .send({ phoneNumber: "0505050505", provider: "MTN_MONEY", amount: 500 });
+    expect(tooBig.status).toBe(422);
+
+    const topup = await app
+      .post("/api/v1/wallet/topups")
+      .set("Cookie", broke.cookie)
+      .send({ amount: 500 });
+    await app
+      .post(
+        `/api/v1/wallet/topups/${topup.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", broke.cookie);
+
+    // A PENDING transfer holds no funds — a second transfer can drain the
+    // wallet first, and then the first confirmation must fail with 422.
+    const pending = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", broke.cookie)
+      .send({
+        phoneNumber: "+225 05 05 05 05 05",
+        provider: "MTN_MONEY",
+        amount: 300,
+      });
+    expect(pending.status).toBe(201);
+
+    const drainer = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", broke.cookie)
+      .send({ phoneNumber: "0101010101", provider: "MTN_MONEY", amount: 400 });
+    expect(drainer.status).toBe(201);
+    const drained = await app
+      .post(
+        `/api/v1/wallet/phone-transfers/${drainer.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", broke.cookie);
+    expect(drained.body.data.wallet.balance).toBe(100);
+
+    const confirmed = await app
+      .post(
+        `/api/v1/wallet/phone-transfers/${pending.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", broke.cookie);
+    expect(confirmed.status).toBe(422);
+    // Still PENDING — the owner can recharge and re-confirm.
+    const wallet = await app.get("/api/v1/wallet").set("Cookie", broke.cookie);
+    expect(wallet.body.data.wallet.balance).toBe(100);
+
+    // Malformed numbers and unknown providers are rejected by validation.
+    const malformed = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", broke.cookie)
+      .send({ phoneNumber: "abc", provider: "MTN_MONEY", amount: 100 });
+    expect(malformed.status).toBe(400);
+    const unknownProvider = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", broke.cookie)
+      .send({ phoneNumber: "0505050505", provider: "WAVE", amount: 100 });
+    expect(unknownProvider.status).toBe(400);
+  });
+
+  it("registers payment methods: first becomes default, duplicates rejected", async () => {
+    const owner = await createUser("Kadi", uniqueEmail("kadi-methods"));
+    const app = await api();
+
+    const created = await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", owner.cookie)
+      .send({ phoneNumber: "07 07 07 07 07", provider: "ORANGE_MONEY" });
+    expect(created.status).toBe(201);
+    expect(created.body.data.method).toMatchObject({
+      phoneNumber: "0707070707",
+      provider: "ORANGE_MONEY",
+      isDefault: true, // first method becomes the default
+    });
+
+    const duplicate = await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", owner.cookie)
+      .send({ phoneNumber: "0707070707", provider: "ORANGE_MONEY" });
+    expect(duplicate.status).toBe(409);
+
+    const second = await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", owner.cookie)
+      .send({ phoneNumber: "0505050505", provider: "MTN_MONEY" });
+    expect(second.body.data.method.isDefault).toBe(false);
+
+    // Promote the MTN number; it takes the default flag from the Orange one.
+    const promoted = await app
+      .patch(`/api/v1/wallet/methods/${second.body.data.method.id}/default`)
+      .set("Cookie", owner.cookie);
+    expect(promoted.status).toBe(200);
+    const defaults = promoted.body.data.filter(
+      (m: { isDefault: boolean }) => m.isDefault,
+    );
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0].phoneNumber).toBe("0505050505");
+
+    const removed = await app
+      .delete(`/api/v1/wallet/methods/${second.body.data.method.id}`)
+      .set("Cookie", owner.cookie);
+    expect(removed.status).toBe(204);
+    expect(
+      (
+        await app
+          .delete("/api/v1/wallet/methods/00000000-0000-4000-8000-000000000000")
+          .set("Cookie", owner.cookie)
+      ).status,
+    ).toBe(404);
+    const remaining = await app
+      .get("/api/v1/wallet/methods")
+      .set("Cookie", owner.cookie);
+    expect(remaining.body.data).toHaveLength(1);
+  });
+
+  it("credits a registered number instantly — the number is a wallet address", async () => {
+    const sender = await createUser("Nina S", uniqueEmail("nina-addr"));
+    const receiver = await createUser("Awa R", uniqueEmail("awa-addr"));
+    const app = await api();
+
+    // Awa registers her Orange Money number (globally unique wallet address).
+    await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", receiver.cookie)
+      .send({ phoneNumber: "0707070708", provider: "ORANGE_MONEY" });
+
+    // Nina tops up and wires money to that number — no PENDING, instant credit.
+    const topup = await app
+      .post("/api/v1/wallet/topups")
+      .set("Cookie", sender.cookie)
+      .send({ amount: 4_000 });
+    await app
+      .post(
+        `/api/v1/wallet/topups/${topup.body.data.transaction.reference}/dev-confirm`,
+      )
+      .set("Cookie", sender.cookie);
+
+    const sent = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", sender.cookie)
+      .send({
+        phoneNumber: "07 07 07 07 08",
+        provider: "ORANGE_MONEY",
+        amount: 1_500,
+      });
+    expect(sent.status).toBe(201);
+    expect(sent.body.data.transaction).toMatchObject({
+      type: "TRANSFER_OUT",
+      status: "SUCCESS",
+      provider: "ORANGE_MONEY",
+      phoneNumber: "0707070708",
+    });
+    expect(sent.body.data.transaction.counterparty.id).toBe(receiver.userId);
+
+    // The receiver's wallet was credited without any confirmation step.
+    const receiverWallet = await app
+      .get("/api/v1/wallet")
+      .set("Cookie", receiver.cookie);
+    expect(receiverWallet.body.data.wallet.balance).toBe(1_500);
+    const receiverLedger = await app
+      .get("/api/v1/wallet/transactions")
+      .set("Cookie", receiver.cookie);
+    expect(receiverLedger.body.data[0]).toMatchObject({
+      type: "TRANSFER_IN",
+      amount: 1_500,
+    });
+    expect(receiverLedger.body.data[0].counterparty.id).toBe(sender.userId);
+
+    // Sending to your own registered number is a cash-out: a PENDING external
+    // wire to your own mobile money account, not an internal self-transfer.
+    await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", sender.cookie)
+      .send({ phoneNumber: "0606060606", provider: "MTN_MONEY" });
+    const selfSend = await app
+      .post("/api/v1/wallet/phone-transfers")
+      .set("Cookie", sender.cookie)
+      .send({ phoneNumber: "0606060606", provider: "MTN_MONEY", amount: 100 });
+    expect(selfSend.status).toBe(201);
+    expect(selfSend.body.data.transaction).toMatchObject({
+      type: "PHONE_TRANSFER",
+      status: "PENDING",
+    });
+
+    // A number is one owner: Nina cannot claim Awa's registered number.
+    const claim = await app
+      .post("/api/v1/wallet/methods")
+      .set("Cookie", sender.cookie)
+      .send({ phoneNumber: "0707070708", provider: "ORANGE_MONEY" });
+    expect(claim.status).toBe(409);
   });
 });

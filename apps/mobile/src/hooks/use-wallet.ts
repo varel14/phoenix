@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { walletApi } from "@/services/api/wallet-api";
 import { queryKeys } from "@/constants/query-keys";
-import type { WalletTransactionType } from "@/types/wallet";
+import type {
+  MobileMoneyProvider,
+  WalletTransactionType,
+} from "@/types/wallet";
 
 /** Invalidates everything a balance or ledger change touches. */
 function useInvalidateWallet() {
@@ -55,6 +58,28 @@ export function useDevConfirmTopup() {
   const invalidate = useInvalidateWallet();
   return useMutation({
     mutationFn: (reference: string) => walletApi.devConfirmTopup(reference),
+    onSettled: invalidate,
+  });
+}
+
+export function useInitiatePhoneTransfer() {
+  const invalidate = useInvalidateWallet();
+  return useMutation({
+    mutationFn: (body: {
+      phoneNumber: string;
+      provider: MobileMoneyProvider;
+      amount: number;
+      note?: string;
+    }) => walletApi.initiatePhoneTransfer(body),
+    onSettled: invalidate,
+  });
+}
+
+export function useDevConfirmPhoneTransfer() {
+  const invalidate = useInvalidateWallet();
+  return useMutation({
+    mutationFn: (reference: string) =>
+      walletApi.devConfirmPhoneTransfer(reference),
     onSettled: invalidate,
   });
 }

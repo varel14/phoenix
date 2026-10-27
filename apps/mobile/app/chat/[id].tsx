@@ -34,6 +34,8 @@ import { getSocket } from "@/services/realtime/socket";
 import { loadCachedMessages, saveMessages } from "@/services/chat/chat-cache";
 import { conversationsApi } from "@/services/api/chat-api";
 import { uploadFile } from "@/services/api/uploads-api";
+import { seedVoiceNote } from "@/services/media/voice-cache";
+import { seedSentMedia } from "@/services/media/sent-media-cache";
 import {
   capturePhoto,
   pickChatDocument,
@@ -290,6 +292,13 @@ export default function ChatScreen() {
     setSendingVoice(true);
     try {
       const upload = await uploadFile(recorded.uri, "voice", recorded.mimeType);
+      // The clip is already on disk — register it in the voice cache before
+      // the message can render, so the sent bubble plays without a download.
+      await seedVoiceNote({
+        storageKey: upload.storageKey,
+        sourceUrl: upload.url ?? "",
+        localUri: recorded.uri,
+      });
       await sendMessage.mutateAsync({
         conversationId: id,
         body: {
@@ -360,6 +369,13 @@ export default function ChatScreen() {
     setUploadingAttachment(true);
     try {
       const upload = await uploadFile(media.uri, spec.kind, media.mimeType);
+      // The picked file is already on disk — register it before the server
+      // message can render, so the sent bubble never re-downloads it.
+      await seedSentMedia({
+        storageKey: upload.storageKey,
+        sourceUrl: upload.url ?? "",
+        localUri: media.uri,
+      });
       const message = await sendMessage.mutateAsync({
         conversationId: id,
         body: {

@@ -17,6 +17,7 @@ import { useEventSync } from "@/hooks/use-event-sync";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { CallOverlay } from "@/components/calls/call-overlay";
+import { AppLockGate } from "@/components/app-lock/app-lock-gate";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -93,6 +94,8 @@ function RootNavigator() {
             />
           </Stack>
           <CallOverlay />
+          {/* The 3-day app lock covers everything, calls included. */}
+          <AppLockGate />
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>

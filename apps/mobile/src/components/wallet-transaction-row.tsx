@@ -3,9 +3,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatMoney } from "@/utils/money";
+import { formatPhone } from "@/utils/format";
 import { AppText, PressableScale } from "@/components/ui";
 import { UserAvatar } from "@/components/chat/user-avatar";
 import {
+  MOBILE_MONEY_LABELS,
   WALLET_TYPE_LABELS,
   type WalletTransaction,
   type WalletTransactionType,
@@ -21,6 +23,8 @@ export function transactionIcon(type: WalletTransactionType): IconName {
       return "arrow-up-outline";
     case "TRANSFER_IN":
       return "arrow-down-outline";
+    case "PHONE_TRANSFER":
+      return "call-outline";
   }
 }
 
@@ -35,6 +39,8 @@ export function transactionLabel(
       return `Envoyé à ${counterpartyName ?? "—"}`;
     case "TRANSFER_IN":
       return `Reçu de ${counterpartyName ?? "—"}`;
+    case "PHONE_TRANSFER":
+      return "Transfert mobile";
   }
 }
 
@@ -130,10 +136,14 @@ export function WalletTransactionRow({
       )}
       <View style={{ flex: 1, gap: 2 }}>
         <AppText numberOfLines={1} style={{ fontSize: 15, fontWeight: "600" }}>
-          {counterparty?.name ?? WALLET_TYPE_LABELS[transaction.type]}
+          {transaction.phoneNumber
+            ? formatPhone(transaction.phoneNumber)
+            : counterparty?.name ?? WALLET_TYPE_LABELS[transaction.type]}
         </AppText>
         <AppText variant="small" color={colors.textFaint} numberOfLines={1}>
-          {formatRowTime(transaction.createdAt)}
+          {transaction.provider
+            ? `${MOBILE_MONEY_LABELS[transaction.provider]} · ${formatRowTime(transaction.createdAt)}`
+            : formatRowTime(transaction.createdAt)}
         </AppText>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>

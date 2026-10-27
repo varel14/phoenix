@@ -8,6 +8,10 @@ import { radii, spacing, withAlpha } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { formatFileSize } from "@/utils/format";
 import { API_URL } from "@/services/api/api-client";
+import {
+  resolveSentMedia,
+  sentMediaSourceUrl,
+} from "@/services/media/sent-media-cache";
 import type { Message, MessageAttachment } from "@/types/chat";
 
 const MEDIA_WIDTH = 240;
@@ -15,6 +19,16 @@ const MEDIA_WIDTH = 240;
 /** Attachment URLs may be relative ("/uploads/…") in local-storage mode. */
 export function resolveAttachmentUrl(url: string): string {
   return url.startsWith("http") ? url : `${API_URL}${url}`;
+}
+
+/**
+ * Local-first URI for a bubble's media: attachments the user sent from this
+ * device render straight from the picked file instead of re-fetching the
+ * server copy; everything else resolves to the remote URL.
+ */
+function attachmentUri(attachment: MessageAttachment): string {
+  const remote = sentMediaSourceUrl(attachment.url);
+  return resolveSentMedia(attachment.storageKey, remote) ?? remote;
 }
 
 interface MediaBodyProps {
@@ -61,7 +75,7 @@ export function MediaAttachmentBody({ message, mine }: MediaBodyProps) {
 
 function ImageBody({ attachment }: { attachment: MessageAttachment }) {
   const [viewerOpen, setViewerOpen] = useState(false);
-  const uri = resolveAttachmentUrl(attachment.url);
+  const uri = attachmentUri(attachment);
   return (
     <>
       <Pressable
@@ -116,7 +130,7 @@ function VideoBody({ attachment }: { attachment: MessageAttachment }) {
   const [thumb, setThumb] = useState<VideoThumbnail | null>(
     () => thumbnailCache.get(attachment.id) ?? null,
   );
-  const sourceUri = resolveAttachmentUrl(attachment.url);
+  const sourceUri = attachmentUri(attachment);
   // A paused player exists only to render the poster frame.
   const player = useVideoPlayer({ uri: sourceUri }, (p) => {
     p.pause();
