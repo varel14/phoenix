@@ -40,9 +40,11 @@ export const queryKeys = {
   transaction: (id: string) => ["transaction", id] as const,
 
   wallet: () => ["wallet"] as const,
-  walletTransactions: (type?: string) => ["wallet-transactions", type ?? "all"] as const,
+  walletTransactions: (type?: string) =>
+    ["wallet-transactions", type ?? "all"] as const,
   walletTransaction: (id: string) => ["wallet-transaction", id] as const,
   walletRecipients: (search: string) => ["wallet-recipients", search] as const,
+  paymentMethods: () => ["payment-methods"] as const,
 
   products: (params?: unknown) => ["products", params ?? {}] as const,
   product: (id: string) => ["product", id] as const,
