@@ -30,6 +30,9 @@
 #                       Default 0 = scale-to-zero (idle cost $0, cold start on
 #                       first connect). MIN_INSTANCES=1 keeps one warm instance.
 #   SKIP_BUILD=1        Redeploy the existing image without rebuilding.
+#   SEED=1              Run migrations + demo seed as a Cloud Run Job (from
+#                       GCP's network — fast). Off by default: the seed
+#                       writes demo content; never use on data worth keeping.
 #   ALLOW_WILDCARD_CORS=1
 #   R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET
 #   R2_PUBLIC_BASE_URL TURN_URL TURN_USERNAME TURN_CREDENTIAL TURN_AUTH_SECRET
@@ -228,6 +231,47 @@ if [ "$AUTH_URL_IS_PLACEHOLDER" = "1" ]; then
   AUTH_URL="$URL"
 elif [ -n "${BETTER_AUTH_URL:-}" ]; then
   log "Using operator-provided BETTER_AUTH_URL=$AUTH_URL."
+fi
+
+# --- Optional: migrations + seed as a Cloud Run Job (SEED=1) ------------------
+# Runs from GCP's network next to the service — minutes instead of the
+# hour-plus a laptop on a faraway/flaky link needs for thousands of queries.
+# Off by default: the seed writes demo content; never point it at data you
+# want to keep.
+if [ "${SEED:-0}" = "1" ]; then
+  SEED_JOB="phoenix-api-seed"
+  SEED_IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/api:seed"
+  JOB_ENV_ITEMS=("NODE_ENV=production"
+    "THUMBNAILS_DIR=/app/thumbnails"
+    "UPLOADS_DIR=/app/data/uploads"
+    "DIGITAL_FILES_DIR=/app/data/digital-files")
+  for var in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL; do
+    if [ -n "${!var:-}" ]; then JOB_ENV_ITEMS+=("${var}=${!var}"); fi
+  done
+  JOB_ENV_ARG="^;^$(IFS=';'; printf '%s' "${JOB_ENV_ITEMS[*]}")"
+  JOB_SECRETS="DATABASE_URL=phoenix-api-database-url:latest,BETTER_AUTH_SECRET=phoenix-api-better-auth-secret:latest,PAYMENT_WEBHOOK_SECRET=phoenix-api-payment-webhook-secret:latest,APP_LOCK_SECRET=phoenix-api-app-lock-secret:latest,APP_LOCK_ADMIN_KEY=phoenix-api-app-lock-admin-key:latest"
+  JOB_CMD=(/bin/sh -c "cd /app/apps/api && npx prisma migrate deploy && npx prisma db seed")
+
+  if gcloud run jobs describe "$SEED_JOB" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+    log "Updating Cloud Run Job $SEED_JOB…"
+    gcloud run jobs update "$SEED_JOB" --region "$REGION" --project "$PROJECT" \
+      --image "$SEED_IMAGE" --set-secrets "$JOB_SECRETS" --set-env-vars "$JOB_ENV_ARG" >/dev/null
+  else
+    log "Creating Cloud Run Job $SEED_JOB…"
+    gcloud run jobs create "$SEED_JOB" --region "$REGION" --project "$PROJECT" \
+      --image "$SEED_IMAGE" \
+      --command "${JOB_CMD[0]}" --args "${JOB_CMD[1]},${JOB_CMD[2]}" \
+      --cpu 1 --memory 1Gi --timeout 1800 --max-retries 1 --parallelism 1 \
+      --set-secrets "$JOB_SECRETS" --set-env-vars "$JOB_ENV_ARG" >/dev/null
+  fi
+
+  log "Running migrations + seed on GCP (execution of $SEED_JOB)…"
+  if gcloud run jobs execute "$SEED_JOB" --region "$REGION" --project "$PROJECT" --wait >/dev/null; then
+    log "Seed job completed."
+  else
+    die "Seed job failed — inspect with:
+  gcloud run jobs executions logs read $SEED_JOB --region $REGION --project $PROJECT --tail=50"
+  fi
 fi
 
 if printf '%s\n' "$ORIGINS" | grep -qF "$URL"; then

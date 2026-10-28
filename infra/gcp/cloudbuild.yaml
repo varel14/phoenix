@@ -28,6 +28,19 @@ steps:
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
       - .
+  # The "build" stage keeps dev dependencies (prisma CLI, tsx) + sources, so
+  # the `api:seed` image can run `prisma migrate deploy && prisma db seed`
+  # as a Cloud Run Job. Layer-cached from step 0 — effectively just a push.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/api/Dockerfile
+      - --target
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:seed
+      - .
 
 timeout: 1800s
 
@@ -38,3 +51,4 @@ options:
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_IMAGE_TAG}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:seed

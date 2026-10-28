@@ -170,6 +170,28 @@ If $0 matters more than staying GCP-native, point `DATABASE_URL` at
 as-is — the deploy script is database-agnostic. Watch their idle-suspend
 latency (~0.5–1 s wake) and free-tier limits before betting production on it.
 
+## Migrations & seeding on GCP
+
+Deploy with `SEED=1` to run the database work **from GCP's network** as a
+Cloud Run Job (`phoenix-api-seed`, built from the same repo's `api:seed`
+image): it applies `prisma migrate deploy` and then `prisma db seed`, taking
+minutes where a faraway laptop needs an hour.
+
+```sh
+SEED=1 ./infra/gcp/deploy.sh
+```
+
+Off by default on purpose — the seed writes demo accounts and catalog
+content. Use it for fresh/staging databases; never on data worth keeping.
+The job definition stays in the project, so a one-off reseed later is:
+
+```sh
+SEED=1 SKIP_BUILD=1 ./infra/gcp/deploy.sh
+```
+
+Inspect failures with `gcloud run jobs executions logs read phoenix-api-seed
+--region europe-west1 --project <PROJECT> --tail=50`.
+
 ## Pointing the mobile app at the deployment
 
 The app reads its API base URL from `EXPO_PUBLIC_API_URL`
