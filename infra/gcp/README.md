@@ -198,7 +198,7 @@ Plain env vars: `NODE_ENV`, `CORS_ORIGIN`, `BETTER_AUTH_URL`,
 `DIGITAL_FILES_DIR=/app/data/digital-files` (+ optional passthroughs above).
 
 Secrets (Secret Manager → env): `DATABASE_URL`, `BETTER_AUTH_SECRET`,
-`PAYMENT_WEBHOOK_SECRET`.
+`PAYMENT_WEBHOOK_SECRET`, `APP_LOCK_SECRET`, `APP_LOCK_ADMIN_KEY`.
 
 Local dry run of the same image:
 `docker build -f apps/api/Dockerfile -t phoenix-api . && docker run -p 8080:8080 phoenix-api`

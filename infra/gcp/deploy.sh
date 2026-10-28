@@ -122,6 +122,10 @@ ensure_secret "phoenix-api-better-auth-secret" \
   "$( [ -n "${BETTER_AUTH_SECRET:-}" ] && printf '%s' "$BETTER_AUTH_SECRET" || openssl rand -base64 32 )"
 ensure_secret "phoenix-api-payment-webhook-secret" \
   "$( [ -n "${PAYMENT_WEBHOOK_SECRET:-}" ] && printf '%s' "$PAYMENT_WEBHOOK_SECRET" || openssl rand -base64 32 )"
+ensure_secret "phoenix-api-app-lock-secret" \
+  "$( [ -n "${APP_LOCK_SECRET:-}" ] && printf '%s' "$APP_LOCK_SECRET" || openssl rand -base64 32 )"
+ensure_secret "phoenix-api-app-lock-admin-key" \
+  "$( [ -n "${APP_LOCK_ADMIN_KEY:-}" ] && printf '%s' "$APP_LOCK_ADMIN_KEY" || openssl rand -base64 32 )"
 
 grant_secret_access() {
   local name="$1"
@@ -133,7 +137,8 @@ grant_secret_access() {
   gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT" \
     --member "serviceAccount:${RUNTIME_SA}" --role roles/secretmanager.secretAccessor >/dev/null
 }
-for s in phoenix-api-database-url phoenix-api-better-auth-secret phoenix-api-payment-webhook-secret; do
+for s in phoenix-api-database-url phoenix-api-better-auth-secret phoenix-api-payment-webhook-secret \
+  phoenix-api-app-lock-secret phoenix-api-app-lock-admin-key; do
   grant_secret_access "$s"
 done
 
@@ -206,7 +211,7 @@ gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
   --execution-environment gen2 \
   --startup-probe "httpGet.path=/api/v1/health,httpGet.port=8080,initialDelaySeconds=5,periodSeconds=5,timeoutSeconds=5,failureThreshold=12" \
   --liveness-probe "httpGet.path=/api/v1/health,httpGet.port=8080,periodSeconds=30,timeoutSeconds=5,failureThreshold=3" \
-  --set-secrets "DATABASE_URL=phoenix-api-database-url:latest,BETTER_AUTH_SECRET=phoenix-api-better-auth-secret:latest,PAYMENT_WEBHOOK_SECRET=phoenix-api-payment-webhook-secret:latest" \
+  --set-secrets "DATABASE_URL=phoenix-api-database-url:latest,BETTER_AUTH_SECRET=phoenix-api-better-auth-secret:latest,PAYMENT_WEBHOOK_SECRET=phoenix-api-payment-webhook-secret:latest,APP_LOCK_SECRET=phoenix-api-app-lock-secret:latest,APP_LOCK_ADMIN_KEY=phoenix-api-app-lock-admin-key:latest" \
   --set-env-vars "$ENV_ARG" \
   --allow-unauthenticated \
   --ingress all \
