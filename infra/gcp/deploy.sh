@@ -261,7 +261,7 @@ if [ "${SEED:-0}" = "1" ]; then
     gcloud run jobs create "$SEED_JOB" --region "$REGION" --project "$PROJECT" \
       --image "$SEED_IMAGE" \
       --command "${JOB_CMD[0]}" --args "${JOB_CMD[1]},${JOB_CMD[2]}" \
-      --cpu 1 --memory 1Gi --timeout 1800 --max-retries 1 --parallelism 1 \
+      --cpu 1 --memory 1Gi --task-timeout 1800 --max-retries 1 --parallelism 1 \
       --set-secrets "$JOB_SECRETS" --set-env-vars "$JOB_ENV_ARG" >/dev/null
   fi
 
