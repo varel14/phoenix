@@ -9,7 +9,14 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://phoenix-api-eir5n2qcyq-ew.a.run.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "c4fb449c-11b2-4ebe-9579-8f10b8e0e8f8"
+      }
     },
     "production": {
       "autoIncrement": true
