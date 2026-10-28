@@ -10,8 +10,7 @@ apps/api/src/generated
 apps/mobile/*
 !apps/mobile/package.json
 apps/api/tests
-uploads
-digital-files
-thumbnails
+apps/uploads
+apps/digital-files/test-*
 README.md
 FEATURE-MAP.md

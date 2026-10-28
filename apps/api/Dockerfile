@@ -63,6 +63,13 @@ COPY --from=prod-deps --chown=node:node /app /app
 COPY --from=build --chown=node:node /app/apps/api/dist /app/apps/api/dist
 COPY --chown=node:node apps/api/prisma /app/apps/api/prisma
 COPY --chown=node:node apps/api/prisma.config.ts /app/apps/api/
+# Demo media referenced by the seed: catalog images at /thumbnails, chat
+# voice notes at /uploads/seed (the seed copies fixtures there by their
+# original filenames), and digital products served via authorized endpoints.
+# Without R2 configured these must exist on the instance disk.
+COPY --chown=node:node apps/thumbnails /app/thumbnails
+COPY --chown=node:node apps/api/prisma/fixtures/seed /app/data/uploads/seed
+COPY --chown=node:node apps/digital-files /app/data/digital-files
 RUN mkdir -p /app/thumbnails /app/data/uploads /app/data/digital-files && \
     chown -R node:node /app/data /app/thumbnails
 WORKDIR /app/apps/api
