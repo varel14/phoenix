@@ -380,12 +380,96 @@ export const walletService = {
 
   // ------------------------------------------------------- download charges
   /**
-   * Settles a paid download inside the caller's transaction: debits the fan,
-   * credits the artist, and records the paired ledger entries with
-   * `kind: "song-download"` metadata so artist revenue is traceable. Wallet
-   * rows are locked in id order (same pattern as transfers). Throws
-   * INSUFFICIENT_BALANCE when the fan's wallet cannot cover the amount —
-   * aborting the surrounding transaction (no download row is kept unpaid).
+   * Moves `amount` from one user's wallet to another's atomically inside `tx`:
+   * guarded decrement (throws INSUFFICIENT_BALANCE when the sender cannot
+   * cover it — aborting the surrounding transaction), credit to the receiver,
+   * and mirrored TRANSFER_OUT/TRANSFER_IN ledger rows. Wallet rows are locked
+   * in id order (same pattern as transfers). Returns the sender's new balance.
+   */
+  async settleTransfer(
+    tx: Prisma.TransactionClient,
+    input: {
+      fromUserId: string;
+      toUserId: string;
+      amount: number;
+      currency: string;
+      note: string;
+      metadata: Prisma.InputJsonObject;
+    },
+  ): Promise<number> {
+    const fromWallet = await this.ensureWalletInTx(tx, input.fromUserId);
+    const toWallet = await this.ensureWalletInTx(tx, input.toUserId);
+    const transferRef = generateReference(WALLET_REFERENCE_PREFIX);
+    const ordered = [fromWallet, toWallet].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+
+    let fromBalance: number | undefined;
+    let toBalance: number | undefined;
+    for (const wallet of ordered) {
+      if (wallet.id === fromWallet.id) {
+        const debited = await tx.wallet.updateMany({
+          where: { id: wallet.id, balance: { gte: input.amount } },
+          data: { balance: { decrement: input.amount } },
+        });
+        if (debited.count === 0) {
+          throw new AppError(
+            422,
+            INSUFFICIENT_BALANCE_CODE,
+            "Solde insuffisant — rechargez votre portefeuille pour continuer",
+          );
+        }
+        fromBalance = (
+          await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } })
+        ).balance;
+      } else {
+        toBalance = (
+          await tx.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: input.amount } },
+          })
+        ).balance;
+      }
+    }
+
+    await tx.walletTransaction.createMany({
+      data: [
+        {
+          walletId: fromWallet.id,
+          type: "TRANSFER_OUT",
+          status: "SUCCESS",
+          amount: input.amount,
+          balanceAfter: fromBalance ?? null,
+          currency: input.currency,
+          reference: generateReference(WALLET_REFERENCE_PREFIX),
+          transferRef,
+          note: input.note,
+          counterpartyId: input.toUserId,
+          metadata: input.metadata,
+        },
+        {
+          walletId: toWallet.id,
+          type: "TRANSFER_IN",
+          status: "SUCCESS",
+          amount: input.amount,
+          balanceAfter: toBalance ?? null,
+          currency: input.currency,
+          reference: generateReference(WALLET_REFERENCE_PREFIX),
+          transferRef,
+          note: input.note,
+          counterpartyId: input.fromUserId,
+          metadata: input.metadata,
+        },
+      ],
+    });
+    return fromBalance!;
+  },
+
+  /**
+   * Charges a song download atomically inside `tx` (the download row and the
+   * wallet transfer commit together, so an unpaid download can never exist).
+   * `kind: "song-download"` metadata keeps artist revenue traceable. Artists
+   * downloading their own songs are not charged.
    */
   async settleDownloadCharge(
     tx: Prisma.TransactionClient,
@@ -405,79 +489,51 @@ export const walletService = {
         buyerBalance: (await this.ensureWalletInTx(tx, input.buyerId)).balance,
       };
     }
-
-    const buyerWallet = await this.ensureWalletInTx(tx, input.buyerId);
-    const artistWallet = await this.ensureWalletInTx(tx, input.artistUserId);
-    const transferRef = generateReference(WALLET_REFERENCE_PREFIX);
-    const metadata = {
-      kind: "song-download",
-      songId: input.songId,
-      downloadId: input.downloadId,
-    };
-    const note = `Téléchargement — ${input.songTitle}`;
-    const ordered = [buyerWallet, artistWallet].sort((a, b) =>
-      a.id.localeCompare(b.id),
-    );
-
-    let buyerBalance: number | undefined;
-    let artistBalance: number | undefined;
-    for (const wallet of ordered) {
-      if (wallet.id === buyerWallet.id) {
-        const debited = await tx.wallet.updateMany({
-          where: { id: wallet.id, balance: { gte: input.amount } },
-          data: { balance: { decrement: input.amount } },
-        });
-        if (debited.count === 0) {
-          throw new AppError(
-            422,
-            INSUFFICIENT_BALANCE_CODE,
-            "Solde insuffisant — rechargez votre portefeuille pour télécharger",
-          );
-        }
-        buyerBalance = (
-          await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } })
-        ).balance;
-      } else {
-        artistBalance = (
-          await tx.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: { increment: input.amount } },
-          })
-        ).balance;
-      }
-    }
-
-    await tx.walletTransaction.createMany({
-      data: [
-        {
-          walletId: buyerWallet.id,
-          type: "TRANSFER_OUT",
-          status: "SUCCESS",
-          amount: input.amount,
-          balanceAfter: buyerBalance ?? null,
-          currency: input.currency,
-          reference: generateReference(WALLET_REFERENCE_PREFIX),
-          transferRef,
-          note,
-          counterpartyId: input.artistUserId,
-          metadata,
-        },
-        {
-          walletId: artistWallet.id,
-          type: "TRANSFER_IN",
-          status: "SUCCESS",
-          amount: input.amount,
-          balanceAfter: artistBalance ?? null,
-          currency: input.currency,
-          reference: generateReference(WALLET_REFERENCE_PREFIX),
-          transferRef,
-          note,
-          counterpartyId: input.buyerId,
-          metadata,
-        },
-      ],
+    const buyerBalance = await this.settleTransfer(tx, {
+      fromUserId: input.buyerId,
+      toUserId: input.artistUserId,
+      amount: input.amount,
+      currency: input.currency,
+      note: `Téléchargement — ${input.songTitle}`,
+      metadata: {
+        kind: "song-download",
+        songId: input.songId,
+        downloadId: input.downloadId,
+      },
     });
-    return { buyerBalance: buyerBalance! };
+    return { buyerBalance };
+  },
+
+  /**
+   * Charges the page subscription from the fan's wallet and credits the
+   * artist's, mirroring the download-charge ledger pattern (kind:
+   * "page_subscription"). Free when an artist subscribes to their own page.
+   * Throws INSUFFICIENT_BALANCE so the caller's transaction aborts — no
+   * paid-looking subscription can exist without the transfer.
+   */
+  async settleSubscriptionCharge(
+    tx: Prisma.TransactionClient,
+    input: {
+      subscriberId: string;
+      artistUserId: string;
+      amount: number;
+      currency: string;
+      artistId: string;
+      artistName: string;
+    },
+  ): Promise<void> {
+    if (input.subscriberId === input.artistUserId) {
+      await this.ensureWalletInTx(tx, input.subscriberId);
+      return;
+    }
+    await this.settleTransfer(tx, {
+      fromUserId: input.subscriberId,
+      toUserId: input.artistUserId,
+      amount: input.amount,
+      currency: input.currency,
+      note: `Abonnement — page de ${input.artistName}`,
+      metadata: { kind: "page_subscription", artistId: input.artistId },
+    });
   },
 
   /** ensureWallet variant bound to an open transaction. */

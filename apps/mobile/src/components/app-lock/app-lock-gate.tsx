@@ -35,7 +35,6 @@ export function AppLockGate() {
 function AppLockScreen() {
   const { colors, isDark } = useTheme();
   const unlock = useAppLockStore((state) => state.unlock);
-  const unlockedUntil = useAppLockStore((state) => state.unlockedUntil);
 
   const inputRef = useRef<TextInput>(null);
   const submitting = useRef(false);
@@ -101,13 +100,6 @@ function AppLockScreen() {
     if (next.length === CODE_LENGTH) void submit(next);
   }
 
-  // The previous unlock expired exactly when this window started, so the
-  // current code stops working three days later — display that date.
-  const windowEndsAt =
-    unlockedUntil != null
-      ? new Date(Date.parse(unlockedUntil) + 3 * 24 * 60 * 60 * 1000)
-      : null;
-
   return (
     <Modal visible statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -167,14 +159,9 @@ function AppLockScreen() {
               </AppText>
               <AppText variant="bodyMuted" align="center">
                 Par sécurité, l&rsquo;application se verrouille tous les 3
-                jours. Entrez le code à {CODE_LENGTH} caractères pour
-                continuer.{" "}
-                {windowEndsAt
-                  ? `Ce code est valable jusqu'au ${windowEndsAt.toLocaleDateString("fr-FR", {
-                      day: "numeric",
-                      month: "long",
-                    })}.`
-                  : null}
+                jours, à compter de sa première utilisation. Entrez le code à{" "}
+                {CODE_LENGTH} caractères pour continuer pendant 3 jours de
+                plus.
               </AppText>
             </View>
           </View>

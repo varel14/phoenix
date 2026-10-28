@@ -19,6 +19,7 @@ import { AppText, PressableScale } from "./primitives";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export { AppText, Button, PressableScale } from "./primitives";
+export { CircularProgress } from "./circular-progress";
 
 export function Screen({
   children,
@@ -340,7 +341,11 @@ export function ContextMenu({ actions }: { actions: MenuAction[] }) {
         animationType="none"
         onRequestClose={close}
       >
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Fermer le menu">
+        <Pressable
+          style={{ flex: 1 }}
+          onPress={close}
+          accessibilityLabel="Fermer le menu"
+        >
           <Animated.View
             style={{
               flex: 1,
@@ -420,7 +425,9 @@ export function ContextMenu({ actions }: { actions: MenuAction[] }) {
                           name={name}
                           size={20}
                           color={
-                            action.destructive ? colors.danger : colors.textMuted
+                            action.destructive
+                              ? colors.danger
+                              : colors.textMuted
                           }
                         />
                         <AppText

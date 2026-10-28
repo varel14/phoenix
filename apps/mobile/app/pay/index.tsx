@@ -345,6 +345,11 @@ export default function WalletHomeScreen() {
                 onPress={() => openSend()}
               />
               <QuickAction
+                icon="card-outline"
+                label="Paiement"
+                onPress={() => router.push("/pay/methods")}
+              />
+              <QuickAction
                 icon="time-outline"
                 label="Activité"
                 onPress={() => router.push("/pay/transactions")}

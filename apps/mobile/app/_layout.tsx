@@ -86,6 +86,8 @@ function RootNavigator() {
             }}
           >
             <Stack.Screen name="(auth)" />
+            {/* First-run welcome slides rise softly over the auth stack. */}
+            <Stack.Screen name="onboarding" options={{ animation: "fade_from_bottom", animationDuration: 340 }} />
             <Stack.Screen name="(tabs)" />
             {/* Entering/leaving the pay flow rises softly, matching its internal transitions. */}
             <Stack.Screen

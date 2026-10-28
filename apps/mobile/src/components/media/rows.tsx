@@ -4,10 +4,7 @@ import {
 } from "@/services/downloads/download-manager";
 import { useToggleFavorite } from "@/hooks/use-catalog";
 import { MediaRow } from "./media-row";
-import { ProgressBar } from "@/components/ui";
-import { AppText } from "@/components/ui/primitives";
-import { useTheme } from "@/theme/theme-provider";
-import { formatFileSize } from "@/utils/format";
+import { CircularProgress } from "@/components/ui";
 import { View } from "react-native";
 import type { MenuAction } from "@/components/ui";
 import type { Song, Video } from "@/types/api";
@@ -108,24 +105,12 @@ export function InteractiveRow({
         }
         right={
           downloading ? (
-            <View style={{ width: 44, paddingHorizontal: 4, gap: 2 }}>
-              <ProgressBar progress={downloadState?.progress ?? 0} />
-              <DownloadSize media={media} />
+            <View style={{ width: 44, alignItems: "center" }}>
+              <CircularProgress progress={downloadState?.progress ?? 0} />
             </View>
           ) : null
         }
       />
     </View>
-  );
-}
-
-function DownloadSize({ media }: { media: Song | Video }) {
-  const { colors } = useTheme();
-  const size = "fileSizeBytes" in media ? media.fileSizeBytes : null;
-  if (!size) return null;
-  return (
-    <AppText style={{ fontSize: 9, color: colors.textMuted }}>
-      {formatFileSize(size)}
-    </AppText>
   );
 }

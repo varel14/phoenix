@@ -1,21 +1,25 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { authClient } from "@/services/auth/auth-client";
+import { authClient, authErrorMessage } from "@/services/auth/auth-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { AppText, Button, Input } from "@/components/ui";
 import { PhoenixMark } from "@/components/ui/brand";
 
 type SocialProvider = "google" | "apple";
 
+const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+
 export default function LoginScreen() {
   const { colors, isDark } = useTheme();
   const refresh = useAuthStore((state) => state.refresh);
+  // Deep flows (e.g. subscribing while signed out) resume where they started.
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -27,6 +31,14 @@ export default function LoginScreen() {
 
   async function handleLogin() {
     setError(null);
+    if (!email.trim() || !password) {
+      setError("Entrez votre e-mail et votre mot de passe.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError("Entrez une adresse e-mail valide.");
+      return;
+    }
     setLoading(true);
     try {
       const { error: signInError } = await authClient.signIn.email({
@@ -34,11 +46,13 @@ export default function LoginScreen() {
         password,
       });
       if (signInError) {
-        setError(signInError.message ?? "E-mail ou mot de passe incorrect");
+        setError(
+          authErrorMessage(signInError, "E-mail ou mot de passe incorrect."),
+        );
         return;
       }
       await refresh();
-      router.replace("/(tabs)");
+      router.replace(returnTo?.startsWith("/") ? returnTo : "/(tabs)");
     } catch {
       setError("Serveur injoignable — vérifiez votre connexion.");
     } finally {

@@ -14,6 +14,17 @@ export const MOBILE_MONEY_LABELS: Record<MobileMoneyProvider, string> = {
   MTN_MONEY: "MTN Money",
 };
 
+/**
+ * A registered mobile money number — the owner's wallet address. Anyone
+ * knowing the number can send money straight to the owner's wallet.
+ */
+export interface PaymentMethod {
+  id: string;
+  provider: MobileMoneyProvider;
+  phoneNumber: string;
+  isDefault: boolean;
+}
+
 export type WalletTransactionStatus = "PENDING" | "SUCCESS" | "FAILED";
 
 export interface Wallet {

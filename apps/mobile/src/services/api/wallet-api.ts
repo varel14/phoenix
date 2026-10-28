@@ -5,6 +5,7 @@ import type {
   WalletTransaction,
   WalletTransactionType,
   MobileMoneyProvider,
+  PaymentMethod,
 } from "@/types/wallet";
 
 export const walletApi = {
@@ -103,6 +104,39 @@ export const walletApi = {
       : "";
     const result = await apiFetch<{ data: WalletRecipient[] }>(
       `/api/v1/wallet/recipients${query}`,
+    );
+    return result.data;
+  },
+
+  // ------------------------------------------------------ payment methods
+  async listPaymentMethods() {
+    const result = await apiFetch<{ data: PaymentMethod[] }>(
+      "/api/v1/wallet/methods",
+    );
+    return result.data;
+  },
+
+  async createPaymentMethod(body: {
+    provider: MobileMoneyProvider;
+    phoneNumber: string;
+    isDefault?: boolean;
+  }) {
+    const result = await apiFetch<{ data: { method: PaymentMethod } }>(
+      "/api/v1/wallet/methods",
+      { method: "POST", body },
+    );
+    return result.data.method;
+  },
+
+  async deletePaymentMethod(id: string) {
+    await apiFetch(`/api/v1/wallet/methods/${id}`, { method: "DELETE" });
+  },
+
+  /** Promotes a method to default; returns the refreshed list. */
+  async setDefaultPaymentMethod(id: string) {
+    const result = await apiFetch<{ data: PaymentMethod[] }>(
+      `/api/v1/wallet/methods/${id}/default`,
+      { method: "PATCH" },
     );
     return result.data;
   },

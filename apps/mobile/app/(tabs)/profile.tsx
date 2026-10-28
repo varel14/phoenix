@@ -11,7 +11,7 @@ import { usePreferencesStore, type AudioQuality } from "@/stores/preferences-sto
 import { useDownloadsStore } from "@/services/downloads/download-manager";
 import { useFavorites, useFollowing, useMyArtist, useArtistStats } from "@/hooks/use-library";
 import { useCart, useOrders } from "@/hooks/use-market";
-import { useWallet } from "@/hooks/use-wallet";
+import { usePaymentMethods, useWallet } from "@/hooks/use-wallet";
 import { useQuery } from "@tanstack/react-query";
 import { subscriptionsApi } from "@/services/api/subscriptions-api";
 import { queryKeys } from "@/constants/query-keys";
@@ -63,6 +63,7 @@ export default function ProfileScreen() {
 
   // Listener stats + wallet/shopping shortcuts (all real data, lazy queries).
   const walletQuery = useWallet();
+  const paymentMethodsQuery = usePaymentMethods();
   const cartQuery = useCart();
   const ordersQuery = useOrders();
   const favoritesQuery = useFavorites();
@@ -332,6 +333,14 @@ export default function ProfileScreen() {
           sublabel="Transferts et rechargements"
           onPress={() => router.push("/pay")}
           right={<RowValue chevron>{walletQuery.data ? formatMoney(walletQuery.data.balance, walletQuery.data.currency) : undefined}</RowValue>}
+        />
+        <RowDivider />
+        <SettingsRow
+          icon="card-outline"
+          label="Moyens de paiement"
+          sublabel="Numéros Orange Money & MTN"
+          onPress={() => router.push("/pay/methods")}
+          right={<RowValue chevron>{paymentMethodsQuery.data ? `${paymentMethodsQuery.data.length}` : undefined}</RowValue>}
         />
         <RowDivider />
         <SettingsRow

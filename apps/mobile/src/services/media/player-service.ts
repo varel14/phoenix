@@ -3,7 +3,7 @@ import {
   setAudioModeAsync,
   type AudioPlayer,
 } from "expo-audio";
-import { resolveSongSource } from "./source-resolver";
+import { ensureSourcesReady, resolveSongSource } from "./source-resolver";
 import {
   getCachedAudioUri,
   hydrateAudioCache,
@@ -90,6 +90,9 @@ export const playerService = {
     if (queue.length === 0) return;
     await ensureAudioMode();
     await hydrateAudioCache();
+    // Indexed local copies first: a downloaded song must never fall back to
+    // the remote stream just because the library index was still loading.
+    await ensureSourcesReady();
     const store = usePlayerStore.getState();
     store.setQueue(queue, index);
     load(queue[index]!);

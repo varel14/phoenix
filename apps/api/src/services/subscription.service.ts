@@ -7,7 +7,11 @@ import {
   monthPeriodStart,
 } from "../config/pricing.js";
 import { AppError } from "../lib/errors.js";
-import { generateReference, SUBSCRIPTION_REFERENCE_PREFIX } from "../lib/refs.js";
+import {
+  generateReference,
+  SUBSCRIPTION_REFERENCE_PREFIX,
+} from "../lib/refs.js";
+import { walletService } from "./wallet.service.js";
 import {
   subscriptionRepository,
   type PageSubscriptionWithArtist,
@@ -63,19 +67,32 @@ function buildRoyaltyRows(
 export type SubscriptionStatus = {
   subscription: PageSubscriptionWithArtist | null;
   pricing: { monthlyPrice: number; downloadRoyalty: number; currency: string };
-  usage: { downloadedTracks: number; royaltyDueThisMonth: number; royaltyTotal: number };
+  usage: {
+    downloadedTracks: number;
+    royaltyDueThisMonth: number;
+    royaltyTotal: number;
+  };
   history: Array<{ periodStart: Date; downloads: number; amount: number }>;
 };
 
-function assertActive(subscription: { status: string; currentPeriodEnd: Date } | null): boolean {
-  return !!subscription && subscription.status === "ACTIVE" && subscription.currentPeriodEnd > new Date();
+function assertActive(
+  subscription: { status: string; currentPeriodEnd: Date } | null,
+): boolean {
+  return (
+    !!subscription &&
+    subscription.status === "ACTIVE" &&
+    subscription.currentPeriodEnd > new Date()
+  );
 }
 
 export const subscriptionService = {
   /** Resolves the page to subscribe to; defaults to the app's main artist. */
   async resolveArtistId(artistId?: string | undefined): Promise<string> {
     if (artistId) {
-      const artist = await prisma.artist.findUnique({ where: { id: artistId }, select: { id: true } });
+      const artist = await prisma.artist.findUnique({
+        where: { id: artistId },
+        select: { id: true },
+      });
       if (!artist) throw AppError.notFound("Artist");
       return artist.id;
     }
@@ -86,77 +103,121 @@ export const subscriptionService = {
 
   /**
    * Subscribes (or renews) the user to an artist page for
-   * PAGE_SUBSCRIPTION_MONTHLY_PRICE. The payment is recorded as a settled
-   * transaction + receipt; the period is extended by one month.
+   * PAGE_SUBSCRIPTION_MONTHLY_PRICE. The wallet transfer (fan → artist) and
+   * the subscription write commit together, so a paid-looking subscription
+   * can never exist without the 2 500 FCFA moving. Throws INSUFFICIENT_BALANCE
+   * (422) when the fan's wallet cannot cover it. Artists subscribing to their
+   * own page are not charged.
    */
   async subscribe(userId: string, body: SubscribeBody) {
     const artistId = await this.resolveArtistId(body.artistId);
-    const artist = await prisma.artist.findUnique({ where: { id: artistId }, select: { id: true, name: true } });
+    const artist = await prisma.artist.findUnique({
+      where: { id: artistId },
+      select: { id: true, name: true, userId: true },
+    });
     if (!artist) throw AppError.notFound("Artist");
 
     const now = new Date();
-    const existing = await subscriptionRepository.findAnyByUserAndArtist(userId, artistId);
+    const existing = await subscriptionRepository.findAnyByUserAndArtist(
+      userId,
+      artistId,
+    );
 
-    let subscription;
-    if (existing && assertActive(existing)) {
-      // Early renewal: stack the new period after the current one.
-      const start = existing.currentPeriodEnd > now ? existing.currentPeriodEnd : now;
-      subscription = await subscriptionRepository.upsertActive(existing, {
-        start,
-        end: addMonths(start, 1),
-      });
-    } else if (existing) {
-      subscription = await subscriptionRepository.upsertActive(existing, {
-        start: now,
-        end: addMonths(now, 1),
-      });
-    } else {
-      subscription = await subscriptionRepository.create(
-        userId,
-        artistId,
-        PAGE_SUBSCRIPTION_MONTHLY_PRICE,
-        PRICING_CURRENCY,
-        addMonths(now, 1),
-      );
-    }
+    const { subscription, transaction } = await prisma.$transaction(
+      async (tx) => {
+        let subscription;
+        if (existing && assertActive(existing)) {
+          // Early renewal: stack the new period after the current one.
+          const start =
+            existing.currentPeriodEnd > now ? existing.currentPeriodEnd : now;
+          subscription = await tx.pageSubscription.update({
+            where: { id: existing.id },
+            data: {
+              status: "ACTIVE",
+              autoRenew: true,
+              cancelledAt: null,
+              currentPeriodStart: start,
+              currentPeriodEnd: addMonths(start, 1),
+            },
+          });
+        } else if (existing) {
+          subscription = await tx.pageSubscription.update({
+            where: { id: existing.id },
+            data: {
+              status: "ACTIVE",
+              autoRenew: true,
+              cancelledAt: null,
+              currentPeriodStart: now,
+              currentPeriodEnd: addMonths(now, 1),
+            },
+          });
+        } else {
+          subscription = await tx.pageSubscription.create({
+            data: {
+              userId,
+              artistId,
+              monthlyAmount: PAGE_SUBSCRIPTION_MONTHLY_PRICE,
+              currency: PRICING_CURRENCY,
+              status: "ACTIVE",
+              autoRenew: true,
+              currentPeriodStart: now,
+              currentPeriodEnd: addMonths(now, 1),
+            },
+          });
+        }
 
-    const reference = generateReference(SUBSCRIPTION_REFERENCE_PREFIX);
-    const transaction = await prisma.paymentTransaction.create({
-      data: {
-        userId,
-        reference,
-        provider: "simulated",
-        amount: PAGE_SUBSCRIPTION_MONTHLY_PRICE,
-        currency: PRICING_CURRENCY,
-        status: "SUCCESS",
-        paidAt: now,
-        metadata: {
-          kind: "page_subscription",
+        await walletService.settleSubscriptionCharge(tx, {
+          subscriberId: userId,
+          artistUserId: artist.userId,
+          amount: PAGE_SUBSCRIPTION_MONTHLY_PRICE,
+          currency: PRICING_CURRENCY,
           artistId,
           artistName: artist.name,
-          periodStart: subscription.currentPeriodStart.toISOString(),
-          periodEnd: subscription.currentPeriodEnd.toISOString(),
-        },
+        });
+
+        const reference = generateReference(SUBSCRIPTION_REFERENCE_PREFIX);
+        const transaction = await tx.paymentTransaction.create({
+          data: {
+            userId,
+            reference,
+            provider: "wallet",
+            amount: PAGE_SUBSCRIPTION_MONTHLY_PRICE,
+            currency: PRICING_CURRENCY,
+            status: "SUCCESS",
+            paidAt: now,
+            metadata: {
+              kind: "page_subscription",
+              artistId,
+              artistName: artist.name,
+              periodStart: subscription.currentPeriodStart.toISOString(),
+              periodEnd: subscription.currentPeriodEnd.toISOString(),
+            },
+          },
+        });
+        await tx.paymentReceipt.upsert({
+          where: { transactionId: transaction.id },
+          create: {
+            transactionId: transaction.id,
+            reference,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            method: transaction.provider,
+          },
+          update: {},
+        });
+        return { subscription, transaction };
       },
-    });
-    await prisma.paymentReceipt.upsert({
-      where: { transactionId: transaction.id },
-      create: {
-        transactionId: transaction.id,
-        reference,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        method: transaction.provider,
-      },
-      update: {},
-    });
+    );
 
     return { subscription, transaction, artist };
   },
 
   /** Throws 403 SUBSCRIPTION_REQUIRED when the user has no live page subscription. */
   async requireActive(userId: string, artistId: string): Promise<void> {
-    const subscription = await subscriptionRepository.findActiveByUserAndArtist(userId, artistId);
+    const subscription = await subscriptionRepository.findActiveByUserAndArtist(
+      userId,
+      artistId,
+    );
     if (!assertActive(subscription)) {
       throw new AppError(
         403,
@@ -171,19 +232,30 @@ export const subscriptionService = {
     const subscription = await subscriptionRepository.findActiveByUser(userId);
     if (!subscription) return 0;
 
-    const downloads = await subscriptionRepository.findRoyaltyBearingDownloads(userId);
-    return subscriptionRepository.createManyRoyalties(buildRoyaltyRows(downloads, userId));
+    const downloads =
+      await subscriptionRepository.findRoyaltyBearingDownloads(userId);
+    return subscriptionRepository.createManyRoyalties(
+      buildRoyaltyRows(downloads, userId),
+    );
   },
 
   /** Subscription status + royalty usage for the subscriber app. */
   async getMyStatus(userId: string): Promise<SubscriptionStatus> {
     await this.accrueRoyaltiesForUser(userId);
-    const [subscription, downloadedTracks, royaltyTotal, history] = await Promise.all([
-      subscriptionRepository.findActiveByUser(userId),
-      subscriptionRepository.countCompletedDownloads(userId),
-      subscriptionRepository.sumRoyaltiesByUser(userId),
-      subscriptionRepository.listRoyaltyMonthsByUser(userId),
-    ]);
+    const [subscription, downloadedTracks, royaltyTotal, history] =
+      await Promise.all([
+        subscriptionRepository.findActiveByUser(userId),
+        subscriptionRepository.countCompletedDownloads(userId),
+        subscriptionRepository.sumRoyaltiesByUser(userId),
+        subscriptionRepository.listRoyaltyMonthsByUser(userId),
+      ]);
+    // "Due this month" is the current period's accrual — NOT lifetime
+    // downloads: history rows are keyed by month, so read the live one.
+    const currentPeriod = monthPeriodStart();
+    const royaltyDueThisMonth =
+      history.find(
+        (row) => row.periodStart.getTime() === currentPeriod.getTime(),
+      )?.amount ?? 0;
     return {
       subscription,
       pricing: {
@@ -193,16 +265,22 @@ export const subscriptionService = {
       },
       usage: {
         downloadedTracks,
-        royaltyDueThisMonth: downloadedTracks * DOWNLOAD_ROYALTY_MONTHLY_PRICE,
+        royaltyDueThisMonth,
         royaltyTotal,
       },
       history,
     };
   },
 
-  async cancel(userId: string, artistId?: string | undefined): Promise<{ cancelled: number }> {
+  async cancel(
+    userId: string,
+    artistId?: string | undefined,
+  ): Promise<{ cancelled: number }> {
     if (artistId) {
-      const existing = await subscriptionRepository.findAnyByUserAndArtist(userId, artistId);
+      const existing = await subscriptionRepository.findAnyByUserAndArtist(
+        userId,
+        artistId,
+      );
       if (!existing) throw AppError.notFound("Subscription");
       await subscriptionRepository.cancel(existing.id);
       return { cancelled: 1 };
@@ -221,7 +299,10 @@ export const subscriptionService = {
     return {
       months: history,
       total,
-      pricing: { downloadRoyalty: DOWNLOAD_ROYALTY_MONTHLY_PRICE, currency: PRICING_CURRENCY },
+      pricing: {
+        downloadRoyalty: DOWNLOAD_ROYALTY_MONTHLY_PRICE,
+        currency: PRICING_CURRENCY,
+      },
     };
   },
 
@@ -237,9 +318,16 @@ export const subscriptionService = {
     for (const sub of subs) {
       const downloads = await prisma.download.findMany({
         where: { userId: sub.userId, status: "COMPLETED" },
-        select: { id: true, createdAt: true, song: { select: { artistId: true } }, video: { select: { artistId: true } } },
+        select: {
+          id: true,
+          createdAt: true,
+          song: { select: { artistId: true } },
+          video: { select: { artistId: true } },
+        },
       });
-      await subscriptionRepository.createManyRoyalties(buildRoyaltyRows(downloads, sub.userId, artist.id));
+      await subscriptionRepository.createManyRoyalties(
+        buildRoyaltyRows(downloads, sub.userId, artist.id),
+      );
     }
     const [history, total, subscribers] = await Promise.all([
       subscriptionRepository.listRoyaltyMonthsByArtist(artist.id),
@@ -251,7 +339,10 @@ export const subscriptionService = {
       months: history,
       total,
       subscribers,
-      pricing: { downloadRoyalty: DOWNLOAD_ROYALTY_MONTHLY_PRICE, currency: PRICING_CURRENCY },
+      pricing: {
+        downloadRoyalty: DOWNLOAD_ROYALTY_MONTHLY_PRICE,
+        currency: PRICING_CURRENCY,
+      },
     };
   },
 

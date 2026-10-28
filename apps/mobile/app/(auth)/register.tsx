@@ -4,10 +4,12 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Link, router } from "expo-router";
 import { spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
-import { authClient } from "@/services/auth/auth-client";
+import { authClient, authErrorMessage } from "@/services/auth/auth-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { AppText, Button, Input } from "@/components/ui";
 import { PhoenixMark } from "@/components/ui/brand";
+
+const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 
 export default function RegisterScreen() {
   const { colors } = useTheme();
@@ -22,11 +24,15 @@ export default function RegisterScreen() {
   async function handleRegister() {
     setError(null);
     if (name.trim().length < 2) {
-      setError("Please enter your name");
+      setError("Entrez votre nom complet.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError("Entrez une adresse e-mail valide.");
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
       return;
     }
     setLoading(true);
@@ -41,13 +47,15 @@ export default function RegisterScreen() {
       } as Parameters<typeof authClient.signUp.email>[0];
       const { error: signUpError } = await authClient.signUp.email(signUpBody);
       if (signUpError) {
-        setError(signUpError.message ?? "Could not create your account");
+        setError(
+          authErrorMessage(signUpError, "Impossible de créer votre compte."),
+        );
         return;
       }
       await refresh();
       router.replace("/(tabs)");
     } catch {
-      setError("Cannot reach the server. Check your connection.");
+      setError("Impossible de joindre le serveur. Vérifiez votre connexion.");
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import {
   api,
   createArtist,
   createUser,
+  fundWallet,
   publishSong,
   publishVideo,
   signIn,
@@ -50,6 +51,17 @@ describe("Page subscriptions & download royalties", () => {
     const app = await api();
     const cookie = await signIn(fanEmail);
 
+    // The wallet charge and the subscription commit together: without funds
+    // nothing is created.
+    const broke = await app
+      .post("/api/v1/subscriptions")
+      .set("Cookie", cookie)
+      .send({ artistId });
+    expect(broke.status).toBe(422);
+    expect(broke.body.error.code).toBe("INSUFFICIENT_BALANCE");
+
+    await fundWallet(cookie, 10_000);
+
     const res = await app
       .post("/api/v1/subscriptions")
       .set("Cookie", cookie)
@@ -59,7 +71,12 @@ describe("Page subscriptions & download royalties", () => {
     expect(res.body.data.subscription.status).toBe("ACTIVE");
     expect(res.body.data.transaction.amount).toBe(2500);
     expect(res.body.data.transaction.status).toBe("SUCCESS");
+    expect(res.body.data.transaction.provider).toBe("wallet");
     expect(res.body.data.transaction.reference).toMatch(/^CHY-ABO/);
+
+    // The 2 500 FCFA left the fan's wallet.
+    const wallet = await app.get("/api/v1/wallet").set("Cookie", cookie);
+    expect(wallet.body.data.wallet.balance).toBe(7_500);
 
     const periodEnd = new Date(res.body.data.subscription.currentPeriodEnd);
     const expected = new Date();

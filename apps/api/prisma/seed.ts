@@ -648,6 +648,30 @@ async function main() {
     return albumArtwork.get(album) ?? null;
   };
 
+  /** Artist portraits (committed in apps/thumbnails), keyed by artist key. */
+  const ARTIST_AVATAR_FILES: Record<string, string> = {
+    aurora: "avatar-aurora.jpg",
+    solaris: "avatar-solaris.jpg",
+    celeste: "avatar-celeste.jpg",
+    kaya: "avatar-kaya.jpg",
+    nadia: "avatar-nadia.jpg",
+    brickz: "avatar-brickz.jpg",
+    aminata: "avatar-aminata.jpg",
+    djossa: "avatar-djossa.jpg",
+    lyres: "avatar-lyres.jpg",
+    fula: "avatar-fula.jpg",
+    mfoni: "avatar-mfoni.jpg",
+    sahel: "avatar-sahel.jpg",
+  };
+  // Falls back to null (gradient-initials placeholder in the app) when the
+  // generated portraits are absent from apps/thumbnails.
+  const artistAvatarUrl = (key: string): string | null => {
+    const file = ARTIST_AVATAR_FILES[key];
+    return file && listThumbnailFiles().includes(file)
+      ? resolveAssetUrl(`/thumbnails/${file}`)
+      : null;
+  };
+
   const createdArtists = new Map<string, string>();
 
   // The canonical artist account (artist@gmail.com) owns the aurora catalog.
@@ -683,8 +707,8 @@ async function main() {
 
     const record = await prisma.artist.upsert({
       where: { userId: user },
-      update: { bio: artist.bio },
-      create: { userId: user, name: artist.name, bio: artist.bio },
+      update: { bio: artist.bio, avatarUrl: artistAvatarUrl(artist.key) },
+      create: { userId: user, name: artist.name, bio: artist.bio, avatarUrl: artistAvatarUrl(artist.key) },
     });
     createdArtists.set(artist.key, record.id);
     console.log(`  artist: ${artist.name}`);

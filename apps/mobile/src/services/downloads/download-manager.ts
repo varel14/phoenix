@@ -97,7 +97,7 @@ function asMediaRef(media: Song | Video): {
     : { mediaType: "VIDEO", mediaId: media.id, title: media.title };
 }
 
-export const useDownloadsStore = create<DownloadsState>((set, get) => ({
+export const useDownloadsStore = create<DownloadsState>((set) => ({
   items: {},
   library: [],
   hydrated: false,
@@ -117,13 +117,6 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
         }
       }
       return { library, items, hydrated: true };
-    });
-    setSourceResolver((song) => {
-      const entry = get().library.find(
-        (candidate) =>
-          candidate.mediaType === "SONG" && candidate.mediaId === song.id,
-      );
-      return entry ? { uri: entry.fileUri, isLocal: true } : undefined;
     });
   },
 
@@ -278,11 +271,16 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
           // Paused — wait for resume or user action.
           return;
         }
+        // Rename the .part to its final name first, so the library entry (and
+        // playback) point at the canonical file instead of a partial.
+        const finalized =
+          current?.part != null
+            ? finalizePart(current.part, mediaType, mediaId, url)
+            : file;
         const entry = isSong(media)
-          ? songEntryFromSong(media, file)
-          : entryFromVideo(media, file);
+          ? songEntryFromSong(media, finalized)
+          : entryFromVideo(media, finalized);
         await saveLocalEntry(entry);
-        finalizeStorage(entry, current?.part ?? null);
 
         set((state) => ({
           items: {
@@ -419,13 +417,38 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   },
 }));
 
-function finalizeStorage(entry: LocalMediaEntry, part: File | null) {
-  void entry;
-  void part;
-  // File is already finalized by the caller; hook kept for future cleanup.
-}
-
 // Convenience selectors -------------------------------------------------------
+
+/**
+ * Playback resolver, registered as soon as this module is imported (the app
+ * root imports the store) so a track played before the first hydrate completes
+ * still finds its downloaded copy. A vanished file (OS cleanup) falls back to
+ * the remote stream instead of failing playback.
+ */
+setSourceResolver(
+  (song) => {
+    const entry = useDownloadsStore
+      .getState()
+      .library.find(
+        (candidate) =>
+          candidate.mediaType === "SONG" && candidate.mediaId === song.id,
+      );
+    if (!entry) return undefined;
+    try {
+      if (!new File(entry.fileUri).exists) {
+        void useDownloadsStore.getState().refreshLibrary();
+        return undefined;
+      }
+    } catch {
+      return undefined;
+    }
+    return { uri: entry.fileUri, isLocal: true };
+  },
+  async () => {
+    const state = useDownloadsStore.getState();
+    if (!state.hydrated) await state.hydrate();
+  },
+);
 
 export function selectDownloadState(
   state: DownloadsState,

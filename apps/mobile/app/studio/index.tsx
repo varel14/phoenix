@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Line,
+  Path,
+  Stop,
+} from "react-native-svg";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { radii, spacing } from "@/theme";
@@ -21,6 +29,7 @@ import {
   ContextMenu,
   EmptyView,
   ErrorView,
+  IconButton,
   LoadingView,
 } from "@/components/ui";
 import { Artwork } from "@/components/media/artwork";
@@ -97,116 +106,108 @@ export default function StudioScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
-      <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <AppText
-            onPress={() => router.back()}
-            style={{
-              color: colors.primary,
-              fontSize: 22,
-              paddingRight: spacing.md,
-            }}
-          >
-            ←
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          paddingHorizontal: spacing.lg,
+          paddingTop: spacing.xl,
+          paddingBottom: spacing.md,
+        }}
+      >
+        <IconButton
+          icon="chevron-back"
+          onPress={() => router.back()}
+          accessibilityLabel="Retour"
+        />
+        <View style={{ flex: 1 }}>
+          <AppText variant="title">Studio Créateur</AppText>
+          <AppText variant="caption" color={colors.textFaint}>
+            {artist.name}
           </AppText>
-          <View style={{ flex: 1 }}>
-            <AppText variant="title">Studio Créateur</AppText>
-            <AppText variant="caption">{artist.name}</AppText>
-          </View>
-          <ContextMenu
-            actions={[
-              {
-                label: "Modifier le profil",
-                icon: "pencil",
-                onPress: () =>
-                  router.push({
-                    pathname: "/studio/edit-profile",
-                    params: { name: artist.name, bio: artist.bio ?? "" },
-                  }),
-              },
-            ]}
-          />
         </View>
-
-        {statsData ? (
-          <>
-            {/* Aggregate analytics */}
-            <View style={statsGrid}>
-              <StatBox
-                label="Écoutes"
-                value={formatCount(statsData.plays)}
-                icon="headset-outline"
-              />
-              <StatBox
-                label="Vues"
-                value={formatCount(statsData.views)}
-                icon="videocam-outline"
-              />
-              <StatBox
-                label="Téléch."
-                value={formatCount(statsData.downloads)}
-                icon="cloud-download-outline"
-              />
-              <StatBox
-                label="Auditeurs"
-                value={formatCount(statsData.uniqueListeners)}
-                icon="people-outline"
-              />
-              <StatBox
-                label="Revenus"
-                value={formatMoney(statsData.downloadRevenue, "XOF")}
-                icon="wallet-outline"
-              />
-              <StatBox
-                label="Favoris"
-                value={formatCount(statsData.favorites)}
-                icon="heart-outline"
-              />
-            </View>
-
-            {/* 30-day trend */}
-            <TrendChart
-              daily={statsData.daily}
-              metric={chartMetric}
-              onMetricChange={setChartMetric}
-            />
-
-            {/* Per-song activity & popularity */}
-            {statsData.songStats.length > 0 ? (
-              <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-                <AppText variant="subheading">Activité par titre</AppText>
-                <SongActivityTable songStats={statsData.songStats} />
-              </View>
-            ) : null}
-          </>
-        ) : (
-          <LoadingView label="Chargement des statistiques…" />
-        )}
-
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.sm,
-            marginTop: spacing.sm,
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Button
-              label="＋ Publier un titre"
-              onPress={() => router.push("/studio/song-form")}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              label="＋ Publier une vidéo"
-              variant="secondary"
-              onPress={() => router.push("/studio/video-form")}
-            />
-          </View>
-        </View>
+        <ContextMenu
+          actions={[
+            {
+              label: "Modifier le profil",
+              icon: "pencil",
+              onPress: () =>
+                router.push({
+                  pathname: "/studio/edit-profile",
+                  params: { name: artist.name, bio: artist.bio ?? "" },
+                }),
+            },
+          ]}
+        />
       </View>
 
-      <View style={{ marginTop: spacing.lg }}>
+      {statsData ? (
+        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
+          {/* KPI grid — the four numbers that matter first */}
+          <View style={styles.kpiGrid}>
+            <StatCard
+              label="Écoutes"
+              value={formatCount(statsData.plays)}
+              icon="headset-outline"
+            />
+            <StatCard
+              label="Vues"
+              value={formatCount(statsData.views)}
+              icon="videocam-outline"
+            />
+            <StatCard
+              label="Téléch."
+              value={formatCount(statsData.downloads)}
+              icon="cloud-download-outline"
+            />
+            <StatCard
+              label="Revenus"
+              value={formatMoney(statsData.downloadRevenue, "XOF")}
+              icon="wallet-outline"
+            />
+          </View>
+
+          {/* 30-day trend */}
+          <ActivityCard
+            daily={statsData.daily}
+            metric={chartMetric}
+            onMetricChange={setChartMetric}
+            audience={{
+              listeners: statsData.uniqueListeners,
+              favorites: statsData.favorites,
+              subscribers: statsData.subscribers,
+            }}
+          />
+
+          {/* Per-song activity & popularity */}
+          {statsData.songStats.length > 0 ? (
+            <TopTracksCard songStats={statsData.songStats} />
+          ) : null}
+
+          {/* Publish */}
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="＋ Publier un titre"
+                onPress={() => router.push("/studio/song-form")}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="＋ Publier une vidéo"
+                variant="secondary"
+                onPress={() => router.push("/studio/video-form")}
+              />
+            </View>
+          </View>
+        </View>
+      ) : (
+        <LoadingView label="Chargement des statistiques…" />
+      )}
+
+      <View style={{ marginTop: spacing.xl }}>
         <AppText
           variant="heading"
           style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}
@@ -315,7 +316,16 @@ export default function StudioScreen() {
   );
 }
 
-function StatBox({
+const styles = {
+  kpiGrid: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: spacing.sm,
+  },
+};
+
+/** KPI tile: tinted icon + label on top, big number below. */
+function StatCard({
   label,
   value,
   icon,
@@ -328,58 +338,79 @@ function StatBox({
   return (
     <View
       style={{
-        flexBasis: "30%",
+        flexBasis: "47%",
         flexGrow: 1,
         backgroundColor: colors.surface,
-        borderRadius: radii.lg,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.sm,
-        alignItems: "center",
-        gap: 4,
+        borderRadius: radii.xl,
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        padding: spacing.lg,
+        gap: 10,
       }}
     >
-      <AppText variant="heading" style={{ color: colors.accent }}>
+      <View
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+      >
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: radii.sm,
+            backgroundColor: colors.primaryTint,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name={icon} size={18} color={colors.primary} />
+        </View>
+        <AppText variant="small" color={colors.textMuted}>
+          {label}
+        </AppText>
+      </View>
+      <AppText
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={{ fontSize: 24, fontWeight: "800", letterSpacing: -0.5 }}
+      >
         {value}
       </AppText>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        <Ionicons name={icon} size={12} color={colors.textFaint} />
-        <AppText variant="small">{label.toUpperCase()}</AppText>
-      </View>
     </View>
   );
 }
 
-/** Last-30-days bar chart with a plays/views toggle. */
-function TrendChart({
+function ActivityCard({
   daily,
   metric,
   onMetricChange,
+  audience,
 }: {
-  daily: Array<{ date: string; plays: number; views: number }>;
+  daily: ArtistStats["daily"];
   metric: "plays" | "views";
   onMetricChange: (metric: "plays" | "views") => void;
+  audience: { listeners: number; favorites: number; subscribers: number };
 }) {
   const { colors } = useTheme();
   const values = daily.map((day) => day[metric]);
-  const max = Math.max(1, ...values);
   const total = values.reduce((sum, value) => sum + value, 0);
+  const average = values.length > 0 ? Math.round(total / values.length) : 0;
   const label = metric === "plays" ? "écoutes" : "vues";
 
   return (
     <View
       style={{
         backgroundColor: colors.surface,
-        borderRadius: radii.lg,
+        borderRadius: radii.xl,
+        borderWidth: 1,
+        borderColor: colors.hairline,
         padding: spacing.lg,
         gap: spacing.md,
-        marginTop: spacing.sm,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View style={{ flex: 1 }}>
-          <AppText variant="subheading">Activité — 30 derniers jours</AppText>
-          <AppText variant="caption">
-            {formatCount(total)} {label} sur la période
+          <AppText variant="subheading">Activité</AppText>
+          <AppText variant="caption" color={colors.textFaint}>
+            30 derniers jours
           </AppText>
         </View>
         <View style={{ flexDirection: "row", gap: spacing.xs }}>
@@ -394,7 +425,7 @@ function TrendChart({
                 overflow: "hidden",
                 borderRadius: radii.full,
                 paddingHorizontal: spacing.sm,
-                paddingVertical: 4,
+                paddingVertical: 5,
                 backgroundColor:
                   metric === option ? colors.primaryTint : "transparent",
               }}
@@ -404,54 +435,163 @@ function TrendChart({
           ))}
         </View>
       </View>
+
+      {/* Total / average strip */}
       <View
         style={{
           flexDirection: "row",
-          alignItems: "flex-end",
-          gap: 2,
-          height: 72,
+          borderWidth: 1,
+          borderColor: colors.hairline,
+          borderRadius: radii.lg,
+          padding: spacing.md,
         }}
       >
-        {daily.map((day) => {
-          const value = day[metric];
-          const height = Math.max(
-            value > 0 ? 6 : 2,
-            Math.round((value / max) * 72),
-          );
-          return (
-            <View
-              key={day.date}
-              style={{
-                flex: 1,
-                height,
-                borderRadius: 2,
-                backgroundColor:
-                  value > 0 ? colors.primary : colors.surfaceHighlight,
-              }}
-            />
-          );
-        })}
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="heading">{formatCount(total)}</AppText>
+          <AppText variant="caption" color={colors.textFaint}>
+            Total {label}
+          </AppText>
+        </View>
+        <View
+          style={{
+            width: 1,
+            backgroundColor: colors.hairline,
+            marginHorizontal: spacing.md,
+          }}
+        />
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="heading">{formatCount(average)}</AppText>
+          <AppText variant="caption" color={colors.textFaint}>
+            Moy. / jour
+          </AppText>
+        </View>
       </View>
+
+      <AreaChart values={values} />
+      <ChartXLabels values={daily.map((day) => day.date)} />
+
+      {/* Audience meta */}
       <AppText variant="caption" color={colors.textFaint}>
-        il y a 30 jours … aujourd'hui
+        {formatCount(audience.listeners)} auditeurs ·{" "}
+        {formatCount(audience.favorites)} favoris ·{" "}
+        {formatCount(audience.subscribers)} abonnés
       </AppText>
     </View>
   );
 }
 
-const statsGrid = {
-  flexDirection: "row" as const,
-  flexWrap: "wrap" as const,
-  gap: spacing.sm,
-  marginTop: spacing.md,
-};
+/**
+ * Smooth gradient area chart of the 30-day series, with a dashed marker on
+ * the most recent point — pure react-native-svg, no chart dependency.
+ */
+function AreaChart({ values }: { values: number[] }) {
+  const { colors } = useTheme();
+  const [width, setWidth] = useState(0);
+  const height = 150;
+  const padTop = 12;
+  const padBottom = 6;
 
-/** Per-song popularity ranking: plays, 30-day momentum, listeners, downloads. */
-function SongActivityTable({
-  songStats,
-}: {
-  songStats: ArtistStats["songStats"];
-}) {
+  const max = Math.max(1, ...values);
+  const points = values.map((value, i) => ({
+    x: values.length > 1 ? (i / (values.length - 1)) * width : 0,
+    y: padTop + (1 - value / max) * (height - padTop - padBottom),
+  }));
+  const line = smoothPath(points);
+  const last = points[points.length - 1];
+  const area =
+    line && points.length > 1
+      ? `${line} L ${last.x} ${height} L ${points[0].x} ${height} Z`
+      : "";
+
+  return (
+    <View
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={{ height }}
+    >
+      {width > 0 && area ? (
+        <Svg width={width} height={height}>
+          <Defs>
+            <LinearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors.primary} stopOpacity="0.28" />
+              <Stop offset="1" stopColor={colors.primary} stopOpacity="0.02" />
+            </LinearGradient>
+          </Defs>
+          <Path d={area} fill="url(#areaFill)" />
+          <Path
+            d={line}
+            fill="none"
+            stroke={colors.primary}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+          {/* Marker on the latest day */}
+          <Line
+            x1={last.x}
+            y1={0}
+            x2={last.x}
+            y2={height}
+            stroke={colors.textFaint}
+            strokeWidth={1}
+            strokeDasharray="3 4"
+          />
+          <Circle
+            cx={last.x}
+            cy={last.y}
+            r={5}
+            fill={colors.primary}
+            stroke={colors.surface}
+            strokeWidth={2.5}
+          />
+        </Svg>
+      ) : null}
+    </View>
+  );
+}
+
+/** Five date ticks under the chart (first day, weekly steps, today). */
+function ChartXLabels({ values }: { values: string[] }) {
+  const { colors } = useTheme();
+  if (values.length === 0) return null;
+  const ticks = [0, 7, 14, 21, values.length - 1].filter(
+    (tick, index, all) => all.indexOf(tick) === index,
+  );
+  const format = (iso: string) =>
+    new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+    });
+
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+      {ticks.map((tick) => (
+        <AppText key={tick} variant="caption" color={colors.textFaint}>
+          {format(values[tick])}
+        </AppText>
+      ))}
+    </View>
+  );
+}
+
+/** Catmull-Rom → cubic bézier: gentle curves through every data point. */
+function smoothPath(points: Array<{ x: number; y: number }>): string {
+  if (points.length < 2) return "";
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
+/** Ranked tracks with momentum badges, in a single card. */
+function TopTracksCard({ songStats }: { songStats: ArtistStats["songStats"] }) {
   const { colors } = useTheme();
   const maxPlays = Math.max(1, ...songStats.map((song) => song.playCount));
 
@@ -459,11 +599,14 @@ function SongActivityTable({
     <View
       style={{
         backgroundColor: colors.surface,
-        borderRadius: radii.lg,
-        padding: spacing.md,
-        gap: spacing.sm,
+        borderRadius: radii.xl,
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        padding: spacing.lg,
+        gap: spacing.md,
       }}
     >
+      <AppText variant="subheading">Titres en vue</AppText>
       {songStats.map((song, index) => {
         const popularity = song.playCount / maxPlays;
         return (
@@ -509,11 +652,7 @@ function SongActivityTable({
                   numberOfLines={1}
                 >
                   {formatCount(song.playCount)} écoutes ·{" "}
-                  {formatCount(song.uniqueListeners)} auditeurs ·{" "}
-                  {formatCount(song.downloadCount)} téléch.
-                  {song.favorites > 0
-                    ? ` · ${formatCount(song.favorites)} ♥`
-                    : ""}
+                  {formatCount(song.uniqueListeners)} auditeurs
                 </AppText>
               </View>
               <View

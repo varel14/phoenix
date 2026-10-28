@@ -84,6 +84,39 @@ export function useDevConfirmPhoneTransfer() {
   });
 }
 
+export function usePaymentMethods() {
+  return useQuery({
+    queryKey: queryKeys.paymentMethods(),
+    queryFn: () => walletApi.listPaymentMethods(),
+  });
+}
+
+export function usePaymentMethodMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["payment-methods"] });
+  };
+
+  const addMethod = useMutation({
+    mutationFn: (body: {
+      provider: MobileMoneyProvider;
+      phoneNumber: string;
+      isDefault?: boolean;
+    }) => walletApi.createPaymentMethod(body),
+    onSuccess: invalidate,
+  });
+  const removeMethod = useMutation({
+    mutationFn: (id: string) => walletApi.deletePaymentMethod(id),
+    onSuccess: invalidate,
+  });
+  const setDefaultMethod = useMutation({
+    mutationFn: (id: string) => walletApi.setDefaultPaymentMethod(id),
+    onSuccess: invalidate,
+  });
+
+  return { addMethod, removeMethod, setDefaultMethod };
+}
+
 export function useTransfer() {
   const invalidate = useInvalidateWallet();
   return useMutation({

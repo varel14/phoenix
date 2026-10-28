@@ -11,9 +11,13 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Contacts from "expo-contacts";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  useDevConfirmPhoneTransfer,
+  useInitiatePhoneTransfer,
+  usePaymentMethods,
   useTransfer,
   useWallet,
   useWalletRecipients,
@@ -41,7 +45,13 @@ import { radii, spacing } from "@/theme";
 import { useTheme } from "@/theme/theme-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatAmount, formatMoney } from "@/utils/money";
-import type { WalletRecipient, WalletTransaction } from "@/types/wallet";
+import { formatPhone } from "@/utils/format";
+import {
+  MOBILE_MONEY_LABELS,
+  type MobileMoneyProvider,
+  type WalletRecipient,
+  type WalletTransaction,
+} from "@/types/wallet";
 
 const QUICK_AMOUNTS = [1_000, 2_000, 5_000, 10_000];
 const MAX_DIGITS = 9;
@@ -107,6 +117,33 @@ export default function SendScreen() {
   const sessionUser = useAuthStore((state) => state.user);
   const walletQuery = useWallet();
   const transfer = useTransfer();
+  const phoneInit = useInitiatePhoneTransfer();
+  const phoneConfirm = useDevConfirmPhoneTransfer();
+  const methodsQuery = usePaymentMethods();
+
+  // Phone mode: wire money to a real-world Orange Money / MTN number, typed
+  // by hand or picked from the device's contact list.
+  const [mode, setMode] = useState<"contacts" | "phone">("contacts");
+  const [provider, setProvider] = useState<MobileMoneyProvider | null>(null);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [contactName, setContactName] = useState<string | null>(null);
+  const [pickingContact, setPickingContact] = useState(false);
+  const [phoneTarget, setPhoneTarget] = useState<{
+    phoneNumber: string;
+    provider: MobileMoneyProvider;
+    displayName: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Preselect the operator of the user's default payment method, if any.
+  useEffect(() => {
+    const defaultMethod = methodsQuery.data?.find(
+      (method) => method.isDefault,
+    );
+    if (defaultMethod) {
+      setProvider((current) => current ?? defaultMethod.provider);
+    }
+  }, [methodsQuery.data]);
 
   // Deep link from the "Envoi rapide" rail: recipient is preselected.
   // Follow flags are unknown here — they are never rendered in this stage.
@@ -138,6 +175,8 @@ export default function SendScreen() {
     recipient: WalletRecipient;
   } | null>(null);
   const [failure, setFailure] = useState<{ message: string } | null>(null);
+  const transferBusy =
+    transfer.isPending || phoneInit.isPending || phoneConfirm.isPending;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -179,14 +218,107 @@ export default function SendScreen() {
     setStage("amount");
   }
 
+  function normalizePhoneDigits(raw: string): string {
+    return raw.replace(/[\s.-]/g, "");
+  }
+
+  const phoneDigits = normalizePhoneDigits(phoneInput);
+  const phoneReady =
+    provider != null && /^[+0-9][0-9]{7,14}$/.test(phoneDigits);
+
+  /** Opens the native contact picker and prefills the number. */
+  async function pickContact() {
+    if (pickingContact) return;
+    setPickingContact(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== Contacts.PermissionStatus.GRANTED) {
+        setError(
+          "L'accès aux contacts est requis — vous pouvez aussi saisir le numéro à la main.",
+        );
+        return;
+      }
+      const contact = await Contacts.presentContactPickerAsync();
+      const raw = contact?.phoneNumbers?.[0]?.number;
+      if (!raw) {
+        setError("Ce contact n'a pas de numéro de téléphone.");
+        return;
+      }
+      setPhoneInput(normalizePhoneDigits(raw));
+      setContactName(contact.name ?? null);
+      setError(null);
+    } catch {
+      setError("Impossible d'ouvrir les contacts.");
+    } finally {
+      setPickingContact(false);
+    }
+  }
+
+  /** Validates the typed/picked number and moves to the amount stage. */
+  function confirmPhoneTarget() {
+    if (!provider) {
+      setError("Choisissez un opérateur : Orange Money ou MTN Money.");
+      return;
+    }
+    if (!phoneReady) {
+      setError("Numéro invalide — ex. 07 07 07 07 07 ou +225 07 07 07 07 07.");
+      return;
+    }
+    const displayName = contactName ?? formatPhone(phoneDigits);
+    setPhoneTarget({ phoneNumber: phoneDigits, provider, displayName });
+    setRecipient({
+      id: `phone:${phoneDigits}`,
+      name: displayName,
+      image: null,
+      isFollowing: false,
+      isMutual: false,
+    });
+    setError(null);
+    setStage("amount");
+  }
+
   function sendNow() {
     if (!recipient || !amountValid || !wallet) return;
     setFailure(null);
+    const notePayload = note.trim() ? { note: note.trim() } : {};
+
+    // Mobile money: initiate PENDING, then run the provider-confirmation
+    // pipeline (dev stand-in for the operator webhook) before showing the
+    // receipt. Numbers registered by another user credit them instantly
+    // server-side, so the receipt is the same either way.
+    if (phoneTarget) {
+      phoneInit.mutate(
+        {
+          phoneNumber: phoneTarget.phoneNumber,
+          provider: phoneTarget.provider,
+          amount,
+          ...notePayload,
+        },
+        {
+          onSuccess: (transaction) =>
+            phoneConfirm.mutate(transaction.reference, {
+              onSuccess: (data) => {
+                setResult({
+                  transaction: data.transaction,
+                  walletBalance: data.wallet.balance,
+                  recipient,
+                });
+              },
+              onError: (mutationError) =>
+                setFailure({ message: (mutationError as Error).message }),
+            }),
+          onError: (mutationError) =>
+            setFailure({ message: (mutationError as Error).message }),
+        },
+      );
+      return;
+    }
+
     transfer.mutate(
       {
         recipientId: recipient.id,
         amount,
-        ...(note.trim() ? { note: note.trim() } : {}),
+        ...notePayload,
       },
       {
         onSuccess: (data) => {
@@ -287,6 +419,18 @@ export default function SendScreen() {
               }}
             >
               <SummaryRow label="Destinataire" value={result.recipient.name} />
+              {transaction.provider ? (
+                <SummaryRow
+                  label="Opérateur"
+                  value={MOBILE_MONEY_LABELS[transaction.provider]}
+                />
+              ) : null}
+              {transaction.phoneNumber ? (
+                <SummaryRow
+                  label="Numéro"
+                  value={formatPhone(transaction.phoneNumber)}
+                />
+              ) : null}
               <SummaryRow
                 label="Date"
                 value={new Date(transaction.createdAt).toLocaleDateString(
@@ -359,6 +503,12 @@ export default function SendScreen() {
                     message: [
                       "Reçu Chuyassi Pay — Transfert réussi",
                       `Destinataire : ${result.recipient.name}`,
+                      ...(transaction.provider
+                        ? [`Opérateur : ${MOBILE_MONEY_LABELS[transaction.provider]}`]
+                        : []),
+                      ...(transaction.phoneNumber
+                        ? [`Numéro : ${formatPhone(transaction.phoneNumber)}`]
+                        : []),
                       `Montant : ${formatMoney(transaction.amount, transaction.currency)}`,
                       `Référence : ${transaction.reference}`,
                       `Date : ${formatDateTime(transaction.createdAt)}`,
@@ -434,7 +584,7 @@ export default function SendScreen() {
                 label="Réessayer"
                 icon="refresh-outline"
                 onPress={sendNow}
-                loading={transfer.isPending}
+                loading={transferBusy}
               />
               <Button
                 label="Modifier le montant"
@@ -469,17 +619,163 @@ export default function SendScreen() {
             paddingBottom: 48,
           }}
         >
+          {/* Destination mode: in-app contacts or a real-world mobile number */}
           <FadeIn>
-            <Input
-              placeholder="Rechercher un contact…"
-              value={search}
-              onChangeText={setSearch}
-              style={{
-                backgroundColor: colors.surfaceHighlight,
-                borderWidth: 0,
-              }}
-            />
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Chip
+                label="Contacts"
+                active={mode === "contacts"}
+                onPress={() => {
+                  setMode("contacts");
+                  setError(null);
+                }}
+              />
+              <Chip
+                label="Numéro mobile"
+                active={mode === "phone"}
+                onPress={() => {
+                  setMode("phone");
+                  setError(null);
+                }}
+              />
+            </View>
           </FadeIn>
+
+          {mode === "phone" ? (
+            <FadeIn delay={60}>
+              <View style={{ gap: spacing.lg }}>
+                {/* Operator selection */}
+                <View style={{ gap: spacing.sm }}>
+                  <AppText
+                    variant="small"
+                    color={colors.textFaint}
+                    style={{ letterSpacing: 1.5 }}
+                  >
+                    OPÉRATEUR
+                  </AppText>
+                  <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                    {(["ORANGE_MONEY", "MTN_MONEY"] as const).map((option) => {
+                      const active = provider === option;
+                      const dot =
+                        option === "ORANGE_MONEY" ? "#FF7900" : "#FFCC00";
+                      return (
+                        <PressableScale
+                          key={option}
+                          onPress={() => {
+                            setProvider(option);
+                            setError(null);
+                          }}
+                          scaleTo={0.97}
+                          accessibilityLabel={MOBILE_MONEY_LABELS[option]}
+                          style={{ flex: 1 }}
+                        >
+                          <View
+                            style={{
+                              height: 52,
+                              borderRadius: radii.lg,
+                              borderWidth: 1.5,
+                              borderColor: active
+                                ? colors.primary
+                                : colors.border,
+                              backgroundColor: active
+                                ? colors.primaryTint
+                                : colors.surface,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: spacing.sm,
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 6,
+                                backgroundColor: dot,
+                              }}
+                            />
+                            <AppText
+                              style={{
+                                fontSize: 13,
+                                fontWeight: "600",
+                                color: active
+                                  ? colors.primary
+                                  : colors.textMuted,
+                              }}
+                            >
+                              {MOBILE_MONEY_LABELS[option]}
+                            </AppText>
+                          </View>
+                        </PressableScale>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Number entry */}
+                <View style={{ gap: spacing.sm }}>
+                  <AppText
+                    variant="small"
+                    color={colors.textFaint}
+                    style={{ letterSpacing: 1.5 }}
+                  >
+                    NUMÉRO DU BÉNÉFICIAIRE
+                  </AppText>
+                  <Input
+                    placeholder="07 07 07 07 07 ou +225…"
+                    value={phoneInput}
+                    onChangeText={(text) => {
+                      setPhoneInput(text);
+                      setError(null);
+                    }}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    style={{
+                      backgroundColor: colors.surfaceHighlight,
+                      borderWidth: 0,
+                    }}
+                  />
+                  <Button
+                    label="Choisir dans les contacts"
+                    variant="secondary"
+                    icon="people-outline"
+                    onPress={() => void pickContact()}
+                    loading={pickingContact}
+                  />
+                  {contactName ? (
+                    <AppText variant="small" color={colors.textMuted}>
+                      {contactName} · {formatPhone(phoneDigits)}
+                    </AppText>
+                  ) : null}
+                </View>
+
+                {error ? (
+                  <AppText style={{ color: colors.danger, fontSize: 13 }}>
+                    {error}
+                  </AppText>
+                ) : null}
+
+                <Button
+                  label="Continuer"
+                  icon="arrow-forward"
+                  onPress={confirmPhoneTarget}
+                  disabled={!phoneReady}
+                />
+              </View>
+            </FadeIn>
+          ) : (
+            <>
+              <FadeIn>
+                <Input
+                  placeholder="Rechercher un contact…"
+                  value={search}
+                  onChangeText={setSearch}
+                  style={{
+                    backgroundColor: colors.surfaceHighlight,
+                    borderWidth: 0,
+                  }}
+                />
+              </FadeIn>
 
           {!search && recipients.length > 0 ? (
             <FadeIn delay={60}>
@@ -572,6 +868,8 @@ export default function SendScreen() {
               )}
             </View>
           </FadeIn>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -728,8 +1026,8 @@ export default function SendScreen() {
               : "Choisissez un destinataire"
           }
           onPress={sendNow}
-          disabled={!canSend || transfer.isPending}
-          loading={transfer.isPending}
+          disabled={!canSend || transferBusy}
+          loading={transferBusy}
         />
       </View>
 

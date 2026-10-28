@@ -90,6 +90,33 @@ export async function signIn(
   return extractCookie(res);
 }
 
+/** Credits a user's wallet via the dev top-up flow (subscribe/transfer tests). */
+export async function fundWallet(
+  cookie: string,
+  amount: number,
+): Promise<void> {
+  const app = await api();
+  const initiated = await app
+    .post("/api/v1/wallet/topups")
+    .set("Cookie", cookie)
+    .send({ amount });
+  if (initiated.status !== 201) {
+    throw new Error(
+      `Failed to initiate top-up: ${initiated.status} ${JSON.stringify(initiated.body)}`,
+    );
+  }
+  const confirmed = await app
+    .post(
+      `/api/v1/wallet/topups/${initiated.body.data.transaction.reference}/dev-confirm`,
+    )
+    .set("Cookie", cookie);
+  if (confirmed.status !== 200) {
+    throw new Error(
+      `Failed to confirm top-up: ${confirmed.status} ${JSON.stringify(confirmed.body)}`,
+    );
+  }
+}
+
 /** Registers a user and promotes them to an artist with their own profile. */
 export async function createArtist(
   name: string,

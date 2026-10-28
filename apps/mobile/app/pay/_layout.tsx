@@ -21,6 +21,7 @@ export default function PayLayout() {
     >
       <Stack.Screen name="send" options={{ animation: "slide_from_bottom" }} />
       <Stack.Screen name="topup" options={{ animation: "slide_from_bottom" }} />
+      <Stack.Screen name="methods" options={{ animation: "slide_from_bottom" }} />
     </Stack>
   );
 }
